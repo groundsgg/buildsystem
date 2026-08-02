@@ -62,6 +62,31 @@ rejects anything a third party invents with `Unknown world data key`.
 **Publishing is not going live.** A push makes a version that an admin can put in front of players
 from the portal. Builders never move a pin — that separation is enforced by the registry, not here.
 
+### Setting a map up
+
+A gamemode's requirements come from one number the builder actually knows:
+
+```
+/map setup bedwars 4        # this map is bedwars, four teams
+/ms team1 spawn             # stand there, name it
+/ms team1 bed
+/ms map lobby
+/map setup                  # what is still missing, grouped by team
+```
+
+`/ms` exists next to `/map poi set` because it is typed once per place per team — twenty-eight
+times for four-team BedWars — and because it knows the profile. `/ms team1 spwan` is **refused**
+rather than quietly becoming a point nothing will ever read, which is the failure mode that leaves
+a map looking finished and behaving broken. Every reply names the next command to type, since
+typing it is the work.
+
+Adding a gamemode is a line in `SetupProfile`, not a new code path. BedWars asks for `spawn`, `bed`,
+`iron`, `gold`, `shop` and `upgrade` per team, plus `lobby`, `spectator`, `diamond.1` and
+`emerald.1` once.
+
+`grounds/setup.json` travels in the bundle like the points do, so a gamemode loading a map is told
+its shape by the map rather than by configuration somewhere else.
+
 ### Places in a map
 
 A gamemode needs to know where players spawn, where a bed stands, where a generator ticks.

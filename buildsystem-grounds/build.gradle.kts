@@ -59,7 +59,12 @@ bukkit {
     commands {
         register("map") {
             description = "Publish, fork and inspect the map this world belongs to"
-            usage = "/<command> [login|logout|status|push|fork|versions|link|poi]"
+            usage = "/<command> [login|logout|status|push|fork|versions|link|poi|setup]"
+            permission = "grounds.map"
+        }
+        register("ms") {
+            description = "Mark a place while setting a map up"
+            usage = "/<command> <team1|map> <spawn|bed|iron|…>"
             permission = "grounds.map"
         }
     }

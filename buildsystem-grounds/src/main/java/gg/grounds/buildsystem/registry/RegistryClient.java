@@ -195,14 +195,18 @@ public final class RegistryClient {
         try {
             // No Authorization header and no content type: the presigned URL signs `host` only,
             // so anything else either travels unsigned or breaks the signature outright.
-            HttpResponse<Void> response = http.send(
+            // The body matters: R2 answers a refused upload with an XML <Error><Code>, and
+            // discarding it leaves "HTTP 400" — which says nothing about expired credentials,
+            // a bad key or a clock skew. The presigned URL itself is never logged; it carries
+            // a signature.
+            HttpResponse<String> response = http.send(
                     HttpRequest.newBuilder(URI.create(presignedUrl))
                             .timeout(TIMEOUT)
                             .PUT(HttpRequest.BodyPublishers.ofFile(archive))
                             .build(),
-                    HttpResponse.BodyHandlers.discarding());
+                    HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() / 100 != 2) {
-                throw new RegistryException("the upload was refused with HTTP " + response.statusCode());
+                throw new RegistryException("the upload was refused: " + describeStorageError(response));
             }
         } catch (IOException | InterruptedException e) {
             if (e instanceof InterruptedException) {
@@ -210,6 +214,26 @@ public final class RegistryClient {
             }
             throw new RegistryException("the upload failed: " + e.getMessage(), e);
         }
+    }
+
+    /**
+     * The {@code <Code>} and {@code <Message>} out of an S3-style error body, which name the cause
+     * where a status code only reports that there was one.
+     */
+    private static String describeStorageError(HttpResponse<String> response) {
+        String body = response.body() == null ? "" : response.body();
+        String code = between(body, "<Code>", "</Code>");
+        String message = between(body, "<Message>", "</Message>");
+        if (code.isEmpty() && message.isEmpty()) {
+            return "HTTP " + response.statusCode();
+        }
+        return ("HTTP " + response.statusCode() + " " + code + (message.isEmpty() ? "" : " — " + message)).trim();
+    }
+
+    private static String between(String text, String open, String close) {
+        int from = text.indexOf(open);
+        int to = from < 0 ? -1 : text.indexOf(close, from + open.length());
+        return to < 0 ? "" : text.substring(from + open.length(), to);
     }
 
     private HttpRequest.Builder request(TokenSource auth, String path) throws RegistryException {

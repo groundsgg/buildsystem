@@ -139,7 +139,12 @@ public final class DeviceFlow {
                                     + "&client_id="
                                     + enc(clientId)
                                     + "&device_code="
-                                    + enc(pending.deviceCode()),
+                                    + enc(pending.deviceCode())
+                                    // Without this the challenge registered at the device request
+                                    // has nothing to verify against, and Keycloak refuses the code
+                                    // — but only AFTER the builder has approved in the browser.
+                                    + "&code_verifier="
+                                    + enc(pending.codeVerifier()),
                             "complete the login");
             if (response.statusCode() == 200) {
                 return toTokens(JsonParser.parseString(response.body()).getAsJsonObject());
@@ -156,9 +161,9 @@ public final class DeviceFlow {
                     // spec's `expired_token` for a code that expired, was already used, or belongs
                     // to an earlier /map login. All three mean the same thing to a builder.
                 case "expired_token", "invalid_grant" ->
-                        throw new RegistryException("That sign-in link is no longer valid — it expired, was"
-                                + " already used, or came from an earlier /map login. Run /map login again"
-                                + " and open the newest link.");
+                        throw new RegistryException("That sign-in link is no longer valid (" 
+                                + describeOAuthError(response)
+                                + "). Run /map login again and open the newest link.");
                 default -> throw new RegistryException("The login failed: " + describeOAuthError(response));
             }
         }

@@ -71,7 +71,7 @@ A gamemode's requirements come from one number the builder actually knows:
 /map setup bedwars green pink            # or name the colours yourself
 /ms red spawn                            # stand there, name it
 /ms red bed                              # then right-click the bed
-/ms lobby                                # shared places need no group
+/ms gold                                 # shared places need no group
 /map setup                               # what is still missing, by colour
 ```
 
@@ -81,9 +81,8 @@ conventional colours, or name them — any of Minecraft's sixteen, in any order.
 
 **Things that already stand get clicked, not stood next to.** A bed, a generator pad, a shop block:
 `/ms red bed` arms the next right-click, and the block's centre is recorded. Standing beside a bed
-and taking the player's position is off by the width of a player. Spawns, the lobby and the
-spectator point *are* a player's position, so those are taken from where the builder stands — at
-their feet, facing where they look. The armed click expires after two minutes, because a click that
+and taking the player's position is off by the width of a player. A team's spawn *is* a player's position, so it is
+taken from where the builder stands — at their feet, facing where they look. The armed click expires after two minutes, because a click that
 outlives the memory of arming it turns an ordinary right-click into a silent edit.
 
 `/ms` exists next to `/map poi set` because it is typed once per place per team — twenty-eight
@@ -111,7 +110,7 @@ A gamemode needs to know where players spawn, where a bed stands, where a genera
 Builders mark those by **standing there**:
 
 ```
-/map poi set lobby.spawn
+/map poi set red.spawn
 /map poi set team.red.bed
 /map poi tp team.red.bed
 ```

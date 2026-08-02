@@ -152,9 +152,14 @@ public final class DeviceFlow {
                 // The spec's backpressure signal: poll slower or the server stops answering.
                 case "slow_down" -> interval = interval.plusSeconds(5);
                 case "access_denied" -> throw new RegistryException("The login was declined.");
-                case "expired_token" ->
-                        throw new RegistryException("The code expired. Run /map login again.");
-                default -> throw new RegistryException("The login failed: " + error);
+                    // Keycloak answers `invalid_grant` ("Device code not valid") rather than the
+                    // spec's `expired_token` for a code that expired, was already used, or belongs
+                    // to an earlier /map login. All three mean the same thing to a builder.
+                case "expired_token", "invalid_grant" ->
+                        throw new RegistryException("That sign-in link is no longer valid — it expired, was"
+                                + " already used, or came from an earlier /map login. Run /map login again"
+                                + " and open the newest link.");
+                default -> throw new RegistryException("The login failed: " + describeOAuthError(response));
             }
         }
         throw new RegistryException("The code expired. Run /map login again.");

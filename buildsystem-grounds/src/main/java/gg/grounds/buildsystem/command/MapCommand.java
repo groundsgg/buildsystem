@@ -67,6 +67,8 @@ public final class MapCommand implements CommandExecutor, TabCompleter {
     private final RegistryClient registry;
     private final DeviceFlow deviceFlow;
     private final PlayerLogins logins;
+    /** Who has a sign-in link outstanding, so a second one cannot orphan the first. */
+    private final java.util.Set<java.util.UUID> pendingLogins = java.util.concurrent.ConcurrentHashMap.newKeySet();
 
     public MapCommand(
             JavaPlugin plugin, RegistryClient registry, DeviceFlow deviceFlow, PlayerLogins logins) {
@@ -95,6 +97,7 @@ public final class MapCommand implements CommandExecutor, TabCompleter {
             return true;
         }
         if (early.equals("logout")) {
+            pendingLogins.remove(player.getUniqueId());
             logins.forget(player.getUniqueId());
             ok(player, "Signed out. Pushes now run as the build server.");
             return true;
@@ -151,6 +154,13 @@ public final class MapCommand implements CommandExecutor, TabCompleter {
             info(player, "Already signed in as " + logins.nameOf(player.getUniqueId()) + ".");
             return;
         }
+        // A second /map login while one is pending leaves two links alive, and approving the
+        // older one fails with "device code not valid" — which reads like a bug rather than
+        // like "you clicked the wrong link". Only the newest attempt stays.
+        if (!pendingLogins.add(player.getUniqueId())) {
+            info(player, "A sign-in is already waiting. Open the last link, or /map logout first.");
+            return;
+        }
         offMainThread(player, () -> {
             DeviceFlow.Pending pending = deviceFlow.begin();
             player.sendMessage(Component.text("Open this to sign in:", NamedTextColor.GRAY));
@@ -160,9 +170,14 @@ public final class MapCommand implements CommandExecutor, TabCompleter {
                             .clickEvent(ClickEvent.openUrl(pending.verificationUri())));
             info(player, "If it asks for a code: " + pending.userCode());
 
-            DeviceFlow.Tokens tokens = deviceFlow.awaitApproval(pending);
-            logins.remember(player.getUniqueId(), player.getName(), tokens);
-            ok(player, "Signed in. Pushes are now recorded as you.");
+            info(player, "Waiting — the link is good for the next few minutes.");
+            try {
+                DeviceFlow.Tokens tokens = deviceFlow.awaitApproval(pending);
+                logins.remember(player.getUniqueId(), player.getName(), tokens);
+                ok(player, "Signed in. Pushes are now recorded as you.");
+            } finally {
+                pendingLogins.remove(player.getUniqueId());
+            }
         });
     }
 

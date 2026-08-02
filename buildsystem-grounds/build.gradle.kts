@@ -1,0 +1,82 @@
+import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
+
+applyCoreConfiguration()
+
+plugins {
+    id("java-library")
+    id("com.gradleup.shadow") version "9.6.1"
+    id("de.eldoria.plugin-yml.bukkit") version "0.9.0"
+}
+
+project.description = "Grounds map registry integration"
+
+repositories {
+    maven {
+        name = "PaperMC"
+        url = uri("https://repo.papermc.io/repository/maven-public/")
+    }
+}
+
+dependencies {
+    // Only the published API, never buildsystem-core. This module is a separate plugin that
+    // talks to BuildSystem the way any third party would, which is what keeps an upstream
+    // merge from ever touching Grounds code — and Grounds code from ever holding upstream back.
+    compileOnly(project(":buildsystem-api"))
+    compileOnly(libs.paperapi)
+    compileOnlyApi(libs.jspecify)
+
+    // The bundle format the registry addresses by digest: `bundle/sha256/<ab>/<sha>.tar.zst`.
+    // Region files compress far better under zstd than deflate, and the key already names it.
+    implementation(libs.commons.compress)
+    implementation(libs.zstd)
+
+    testImplementation(platform(libs.junit.bom))
+    testImplementation(libs.junit.jupiter)
+    testRuntimeOnly(libs.junit.platform.launcher)
+}
+
+tasks.withType<Test> { useJUnitPlatform() }
+
+// plugin.yml is generated, the same way buildsystem-core generates its own — a hand-written
+// one with a ${version} placeholder needs resource filtering, which the configuration cache
+// refuses.
+bukkit {
+    name = "GroundsMaps"
+    version = "${project.version}"
+    description = "Publishes build worlds to the Grounds map registry"
+    author = "Grounds"
+
+    main = "gg.grounds.buildsystem.GroundsMapsPlugin"
+    apiVersion = "26.1"
+    // Hard: every command reads a BuildWorld, so without BuildSystem there is nothing this
+    // plugin could do except fail once per command.
+    depend = listOf("BuildSystem")
+
+    commands {
+        register("map") {
+            description = "Publish, fork and inspect the map this world belongs to"
+            usage = "/<command> [status|push|fork|versions|link]"
+            permission = "grounds.map"
+        }
+    }
+
+    permissions {
+        register("grounds.map") {
+            description = "Use the map commands on the build server"
+            default = net.minecrell.pluginyml.bukkit.BukkitPluginDescription.Permission.Default.OP
+        }
+    }
+}
+
+tasks.named("assemble") { dependsOn(tasks.named("shadowJar")) }
+
+tasks.named<ShadowJar>("shadowJar") {
+    archiveFileName.set("GroundsMaps-${project.version}.jar")
+    destinationDirectory.set(rootProject.layout.buildDirectory.dir("libs"))
+
+    // Both are shaded because a build server also runs other plugins, and two copies of
+    // commons-compress on one classpath is a class-loading argument nobody wins.
+    val shadePath = "gg.grounds.buildsystem.external"
+    relocate("org.apache.commons.compress", "$shadePath.compress")
+    relocate("com.github.luben.zstd", "$shadePath.zstd")
+}

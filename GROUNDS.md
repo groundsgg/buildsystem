@@ -40,13 +40,18 @@ One plugin, `GroundsMaps`, depending on `BuildSystem`. It gives builders one com
 | `/map logout` | Stop acting as yourself |
 | `/map status` | Who you are signed in as, which map this world is, and which version it was built on |
 | `/map link <namespace/name>` | Ties this world to a map, creating the map if it is new |
-| `/map push [note]` | Packs the world, uploads it, publishes a new version |
+| `/map push [address] [note]` | Packs the world, uploads it, publishes a new version. The address links a world that has none |
 | `/map fork <namespace/name>` | A new map from this one's current version. Copies no bytes |
 | `/map versions` | The last ten versions and their state |
 
-Deliberately no digests, no version numbers to type, no bucket names: `/map push` works out which map
-the world belongs to from the world itself. The link is stored as BuildSystem world data, so renaming
-a world through the navigator cannot separate it from its map.
+Deliberately no digests, no version numbers to type, no bucket names. `/map push bedwars/crater`
+links a fresh world and pushes it in one go; after that `/map push` alone is enough, and anything
+you type becomes the note.
+
+The link lives in `plugins/GroundsMaps/links.yml`, keyed by the world's **UUID** — so renaming a
+world in the navigator cannot separate it from its map. It is not stored as BuildSystem world data:
+`WorldDataKey.of` is public, but `WorldDataImpl` registers its properties at construction and
+rejects anything a third party invents with `Unknown world data key`.
 
 **Publishing is not going live.** A push makes a version that an admin can put in front of players
 from the portal. Builders never move a pin — that separation is enforced by the registry, not here.

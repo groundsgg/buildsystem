@@ -22,6 +22,7 @@ import gg.grounds.buildsystem.command.MapCommand;
 import gg.grounds.buildsystem.registry.DeviceFlow;
 import gg.grounds.buildsystem.registry.PlayerLogins;
 import gg.grounds.buildsystem.registry.RegistryClient;
+import gg.grounds.buildsystem.world.MapLinks;
 import java.util.Objects;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.jspecify.annotations.NullMarked;
@@ -59,7 +60,7 @@ public final class GroundsMapsPlugin extends JavaPlugin {
         DeviceFlow deviceFlow = new DeviceFlow(require("oidc.issuer-url"), require("oidc.device-client-id"));
         PlayerLogins logins = new PlayerLogins(deviceFlow);
 
-        MapCommand command = new MapCommand(this, registry, deviceFlow, logins);
+        MapCommand command = new MapCommand(this, registry, deviceFlow, logins, new MapLinks(getDataFolder()));
         Objects.requireNonNull(getCommand("map"), "the map command is declared in plugin.yml")
                 .setExecutor(command);
         Objects.requireNonNull(getCommand("map")).setTabCompleter(command);

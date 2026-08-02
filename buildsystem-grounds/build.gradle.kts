@@ -64,7 +64,7 @@ bukkit {
         }
         register("ms") {
             description = "Mark a place while setting a map up"
-            usage = "/<command> <team1|map> <spawn|bed|iron|…>"
+            usage = "/<command> <red|blue|…> <spawn|bed|iron|…>"
             permission = "grounds.map"
         }
     }

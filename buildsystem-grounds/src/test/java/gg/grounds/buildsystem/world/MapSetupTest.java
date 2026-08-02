@@ -25,6 +25,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -35,12 +36,12 @@ class MapSetupTest {
 
     @Test
     void a_map_carries_its_own_shape() throws IOException {
-        MapSetup.write(world, new MapSetup.Setup("bedwars", 4));
+        MapSetup.write(world, new MapSetup.Setup("bedwars", List.of("red", "blue", "green", "yellow")));
 
         MapSetup.Setup read = MapSetup.read(world);
 
         assertEquals("bedwars", read.gamemode());
-        assertEquals(4, read.teams());
+        assertEquals(List.of("red", "blue", "green", "yellow"), read.teams());
         // Inside the world, so a gamemode loading the bundle is told the shape by the map itself.
         assertTrue(Files.isRegularFile(world.resolve("grounds").resolve("setup.json")));
     }

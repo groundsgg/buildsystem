@@ -21,6 +21,7 @@ package gg.grounds.buildsystem.command;
 import de.eintosti.buildsystem.api.BuildSystemProvider;
 import de.eintosti.buildsystem.api.world.BuildWorld;
 import gg.grounds.buildsystem.world.MapSetup;
+import gg.grounds.buildsystem.world.PendingMarks;
 import gg.grounds.buildsystem.world.PointsOfInterest;
 import gg.grounds.buildsystem.world.SetupProfile;
 import java.io.IOException;
@@ -53,6 +54,12 @@ import org.jspecify.annotations.Nullable;
 @NullMarked
 public final class MapSetupCommand implements CommandExecutor, TabCompleter {
 
+    private final PendingMarks pending;
+
+    public MapSetupCommand(PendingMarks pending) {
+        this.pending = pending;
+    }
+
     @Override
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
         if (!(sender instanceof Player player)) {
@@ -79,13 +86,15 @@ public final class MapSetupCommand implements CommandExecutor, TabCompleter {
             error(player, "Say what this map is first: /map setup bedwars 4");
             return true;
         }
-        if (args.length < 2) {
-            error(player, "Two words: /ms team1 spawn — or /map setup to see what is missing.");
+        if (args.length < 1) {
+            error(player, "/ms team1 spawn, or /ms lobby — /map setup shows what is missing.");
             return true;
         }
 
-        String group = args[0].toLowerCase(Locale.ROOT);
-        String thing = args[1].toLowerCase(Locale.ROOT);
+        // `/ms lobby` rather than `/ms map lobby`: the shared places belong to no team, and making
+        // a builder type a group name for them is tax on the command they type most.
+        String group = args.length >= 2 ? args[0].toLowerCase(Locale.ROOT) : "map";
+        String thing = (args.length >= 2 ? args[1] : args[0]).toLowerCase(Locale.ROOT);
         String point = SetupProfile.resolve(setup.gamemode(), group, thing);
         if (point == null) {
             error(
@@ -94,12 +103,21 @@ public final class MapSetupCommand implements CommandExecutor, TabCompleter {
                             + String.join(", ", SetupProfile.thingsFor(setup.gamemode())));
             return true;
         }
-        if (group.startsWith("team")) {
-            int number = teamNumber(group);
-            if (number < 1 || number > setup.teams()) {
-                error(player, "This map has " + setup.teams() + " teams, so " + group + " is not one of them.");
-                return true;
-            }
+        if (!group.equals("map") && !setup.teams().contains(group)) {
+            error(
+                    player,
+                    "This map's teams are " + String.join(", ", setup.teams()) + " — " + group
+                            + " is not one of them.");
+            return true;
+        }
+
+        if (SetupProfile.isBlock(thing)) {
+            // Already built and standing there: pointing at it is exact, and standing next to it
+            // is off by the width of a player.
+            pending.arm(player.getUniqueId(), point, world.getUID());
+            player.sendMessage(Component.text(
+                    "Right-click the " + thing + " for " + group + ".", NamedTextColor.AQUA));
+            return true;
         }
 
         Location at = player.getLocation();
@@ -129,20 +147,9 @@ public final class MapSetupCommand implements CommandExecutor, TabCompleter {
         return true;
     }
 
-    /** `team2.bed` reads back as `team2 bed`, so the hint is the command rather than a name. */
+    /** `red.bed` reads back as `red bed`, so the hint is the command rather than a name. */
     private static String asCommand(String point) {
-        int dot = point.indexOf('.');
-        return dot < 0 || !point.startsWith("team")
-                ? "map " + point
-                : point.substring(0, dot) + " " + point.substring(dot + 1);
-    }
-
-    private static int teamNumber(String group) {
-        try {
-            return Integer.parseInt(group.substring("team".length()));
-        } catch (RuntimeException e) {
-            return -1;
-        }
+        return point.replace('.', ' ');
     }
 
     private static void error(Player player, String message) {
@@ -166,10 +173,11 @@ public final class MapSetupCommand implements CommandExecutor, TabCompleter {
         }
         List<String> matches = new ArrayList<>();
         if (args.length == 1) {
-            matches.add("map");
-            for (int team = 1; team <= setup.teams(); team++) {
-                matches.add("team" + team);
-            }
+            // The colours first: they are what gets typed, and the shared things are few.
+            matches.addAll(setup.teams());
+            matches.addAll(SetupProfile.thingsFor(setup.gamemode()));
+            matches.add("lobby");
+            matches.add("spectator");
         } else if (args.length == 2) {
             matches.addAll(SetupProfile.thingsFor(setup.gamemode()));
         }

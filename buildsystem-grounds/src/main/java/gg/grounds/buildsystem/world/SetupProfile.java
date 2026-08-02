@@ -51,6 +51,39 @@ public final class SetupProfile {
     private static final Map<String, List<String>> GLOBAL = Map.of(
             "bedwars", List.of("lobby", "spectator", "diamond.1", "emerald.1"));
 
+    /**
+     * Minecraft's dye colours, in the order a four-team map conventionally uses them.
+     *
+     * <p>Teams are colours because that is what a player sees: the red bed, the blue base. `team3`
+     * is a number a builder has to translate every single time they walk into a base.
+     */
+    public static final List<String> COLOURS = List.of(
+            "red",
+            "blue",
+            "green",
+            "yellow",
+            "cyan",
+            "white",
+            "pink",
+            "gray",
+            "orange",
+            "lime",
+            "purple",
+            "magenta",
+            "light_blue",
+            "light_gray",
+            "brown",
+            "black");
+
+    public static boolean isColour(String name) {
+        return COLOURS.contains(name.toLowerCase(Locale.ROOT));
+    }
+
+    /** The first {@code count} colours, for `/map setup bedwars 4`. */
+    public static List<String> defaultColours(int count) {
+        return List.copyOf(COLOURS.subList(0, Math.min(count, COLOURS.size())));
+    }
+
     public static Set<String> gamemodes() {
         return PER_TEAM.keySet();
     }
@@ -63,19 +96,19 @@ public final class SetupProfile {
      * Every point this map must have, in walking order: the shared ones first, then each team as a
      * block, so a builder can finish one base before moving to the next.
      */
-    public static List<String> required(String gamemode, int teams) {
+    public static List<String> required(String gamemode, List<String> teams) {
         String mode = gamemode.toLowerCase(Locale.ROOT);
         List<String> required = new ArrayList<>(GLOBAL.getOrDefault(mode, List.of()));
-        for (int team = 1; team <= teams; team++) {
+        for (String team : teams) {
             for (String point : PER_TEAM.getOrDefault(mode, List.of())) {
-                required.add("team" + team + "." + point);
+                required.add(team + "." + point);
             }
         }
         return required;
     }
 
     /** Which of the required points are still unmarked, in the same walking order. */
-    public static List<String> missing(String gamemode, int teams, Set<String> marked) {
+    public static List<String> missing(String gamemode, List<String> teams, Set<String> marked) {
         List<String> missing = new ArrayList<>();
         for (String point : required(gamemode, teams)) {
             if (!marked.contains(point)) {
@@ -86,15 +119,15 @@ public final class SetupProfile {
     }
 
     /**
-     * Groups the missing points by their team, so the reply can say "team3 is missing bed, shop"
-     * rather than listing twenty names a builder has to sort themselves.
+     * Groups the missing points by their team colour, so the reply can say "red is missing bed,
+     * shop" rather than listing twenty names a builder has to sort themselves.
      */
     public static Map<String, List<String>> missingByGroup(
-            String gamemode, int teams, Set<String> marked) {
+            String gamemode, List<String> teams, Set<String> marked) {
         Map<String, List<String>> grouped = new LinkedHashMap<>();
         for (String point : missing(gamemode, teams, marked)) {
             int dot = point.indexOf('.');
-            String group = dot < 0 || !point.startsWith("team") ? "map" : point.substring(0, dot);
+            String group = dot < 0 || !teams.contains(point.substring(0, dot)) ? "map" : point.substring(0, dot);
             String rest = dot < 0 ? point : point.substring(dot + 1);
             grouped.computeIfAbsent(group, key -> new ArrayList<>()).add(rest);
         }
@@ -117,6 +150,26 @@ public final class SetupProfile {
         return PER_TEAM.getOrDefault(mode, List.of()).contains(point)
                 ? group.toLowerCase(Locale.ROOT) + "." + point
                 : null;
+    }
+
+    /**
+     * Things that are a block somebody has already built, not a place to stand.
+     *
+     * <p>A bed, a generator pad, a shop's block: standing next to one and taking the player's
+     * position is off by the width of a player and by whatever they were looking at. These are
+     * marked by right-clicking the block itself, which is also how a builder already thinks about
+     * them — the bed is *there*, not where I happen to be standing.
+     *
+     * <p>The rest — spawns, the waiting lobby, the spectator point — are exactly a player's
+     * position and facing, so they are taken from the player.
+     */
+    private static final Set<String> BLOCKS =
+            Set.of("bed", "iron", "gold", "shop", "upgrade", "diamond", "emerald");
+
+    public static boolean isBlock(String thing) {
+        String point = thing.toLowerCase(Locale.ROOT);
+        int dot = point.indexOf('.');
+        return BLOCKS.contains(dot < 0 ? point : point.substring(0, dot));
     }
 
     /** What a builder may write after a team, for the "unknown thing" reply and tab completion. */

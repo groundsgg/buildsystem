@@ -19,6 +19,7 @@
 package gg.grounds.buildsystem.world;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -30,38 +31,45 @@ class SetupProfileTest {
 
     /** Four teams is the one number a builder knows; everything else follows from it. */
     @Test
+    void teams_are_colours_because_that_is_what_a_player_sees() {
+        assertEquals(List.of("red", "blue", "green", "yellow"), SetupProfile.defaultColours(4));
+        assertTrue(SetupProfile.isColour("cyan"));
+        assertFalse(SetupProfile.isColour("team1"));
+    }
+
+    @Test
     void expands_every_requirement_from_the_team_count() {
-        List<String> required = SetupProfile.required("bedwars", 4);
+        List<String> required = SetupProfile.required("bedwars", SetupProfile.defaultColours(4));
 
         // 4 shared + 4 teams × 6 places.
         assertEquals(28, required.size());
-        assertTrue(required.contains("team1.spawn"));
-        assertTrue(required.contains("team4.upgrade"));
+        assertTrue(required.contains("red.spawn"));
+        assertTrue(required.contains("yellow.upgrade"));
         assertTrue(required.contains("lobby"));
         assertTrue(required.contains("diamond.1"));
         // Two teams is two teams: nothing lingers from a bigger map.
-        assertEquals(16, SetupProfile.required("bedwars", 2).size());
+        assertEquals(16, SetupProfile.required("bedwars", SetupProfile.defaultColours(2)).size());
     }
 
     /** Teams come as blocks so a builder can finish one base before walking to the next. */
     @Test
     void lists_requirements_in_walking_order() {
-        List<String> required = SetupProfile.required("bedwars", 2);
+        List<String> required = SetupProfile.required("bedwars", SetupProfile.defaultColours(2));
 
         assertEquals("lobby", required.get(0));
         assertEquals(
-                List.of("team1.spawn", "team1.bed", "team1.iron", "team1.gold", "team1.shop", "team1.upgrade"),
+                List.of("red.spawn", "red.bed", "red.iron", "red.gold", "red.shop", "red.upgrade"),
                 required.subList(4, 10));
     }
 
     @Test
     void reports_what_is_left_grouped_by_team() {
-        Set<String> marked = Set.of("lobby", "spectator", "diamond.1", "emerald.1", "team1.spawn", "team1.bed");
+        Set<String> marked = Set.of("lobby", "spectator", "diamond.1", "emerald.1", "red.spawn", "red.bed");
 
-        var missing = SetupProfile.missingByGroup("bedwars", 2, marked);
+        var missing = SetupProfile.missingByGroup("bedwars", SetupProfile.defaultColours(2), marked);
 
-        assertEquals(List.of("iron", "gold", "shop", "upgrade"), missing.get("team1"));
-        assertEquals(6, missing.get("team2").size());
+        assertEquals(List.of("iron", "gold", "shop", "upgrade"), missing.get("red"));
+        assertEquals(6, missing.get("blue").size());
         assertNull(missing.get("map"), "everything shared is marked");
     }
 
@@ -71,10 +79,10 @@ class SetupProfileTest {
      */
     @Test
     void refuses_a_thing_the_gamemode_does_not_have() {
-        assertEquals("team1.spawn", SetupProfile.resolve("bedwars", "team1", "spawn"));
-        assertEquals("team3.bed", SetupProfile.resolve("bedwars", "TEAM3", "BED"));
+        assertEquals("red.spawn", SetupProfile.resolve("bedwars", "red", "spawn"));
+        assertEquals("green.bed", SetupProfile.resolve("bedwars", "GREEN", "BED"));
         assertEquals("lobby", SetupProfile.resolve("bedwars", "map", "lobby"));
-        assertNull(SetupProfile.resolve("bedwars", "team1", "spwan"));
+        assertNull(SetupProfile.resolve("bedwars", "red", "spwan"));
         assertNull(SetupProfile.resolve("bedwars", "map", "nonsense"));
     }
 }

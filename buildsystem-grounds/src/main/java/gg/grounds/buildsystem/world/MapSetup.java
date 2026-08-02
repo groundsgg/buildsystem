@@ -28,6 +28,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.util.List;
 import org.jspecify.annotations.NullMarked;
 import org.jspecify.annotations.Nullable;
 
@@ -45,13 +46,17 @@ public final class MapSetup {
 
     private MapSetup() {}
 
-    /** @param teams how many teams the map is built for; 0 for gamemodes that have none */
-    public record Setup(String gamemode, int teams) {}
+    /**
+     * @param teams the team colours this map is built for, in order. Colours rather than numbers
+     *     because that is what a player sees — the red bed, the blue base — and `team3` is
+     *     something a builder has to translate every time they walk into one.
+     */
+    public record Setup(String gamemode, List<String> teams) {}
 
     private static final class Document {
         int format = 1;
         @Nullable String gamemode;
-        int teams;
+        @Nullable List<String> teams;
     }
 
     public static Path fileIn(Path worldFolder) {
@@ -68,7 +73,7 @@ public final class MapSetup {
             if (document == null || document.gamemode == null || document.gamemode.isBlank()) {
                 return null;
             }
-            return new Setup(document.gamemode, document.teams);
+            return new Setup(document.gamemode, document.teams == null ? List.of() : List.copyOf(document.teams));
         } catch (IOException | JsonSyntaxException e) {
             // A broken file reads as "not set up" rather than taking the map down with it.
             return null;
@@ -80,7 +85,7 @@ public final class MapSetup {
         Files.createDirectories(file.getParent());
         Document document = new Document();
         document.gamemode = setup.gamemode();
-        document.teams = setup.teams();
+        document.teams = List.copyOf(setup.teams());
         // Same atomic write as the points: half a file is a map that claims a shape it does not
         // have, and a gamemode would find out at match start.
         Path temporary = file.resolveSibling("setup.json.tmp");

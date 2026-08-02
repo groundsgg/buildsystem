@@ -5,6 +5,10 @@ spigot = "26.2-R0.1-SNAPSHOT"
 # Pinned to the exact server build the build server runs, so what we compile against and what
 # we deploy onto are the same number rather than two moving targets.
 paperapi = "26.2.build.87-stable"
+# Test-only, and NOT the same number: MockBukkit ships per MC version, so the test classpath has
+# to stay on the version it was built for. Sharing one version puts 26.2 API classes under a
+# 26.1.2 MockBukkit and every test dies in a static initialiser.
+papertest = "26.1.2.build.+"
 paperlib = "1.0.8"
 
 # Test
@@ -40,6 +44,7 @@ junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher
 mockito = { group = "org.mockito", name = "mockito-core", version.ref = "mockito" }
 mockbukkit = { group = "org.mockbukkit.mockbukkit", name = "mockbukkit-v26.1.2", version.ref = "mockbukkit" }
 paperapi = { group = "io.papermc.paper", name = "paper-api", version.ref = "paperapi" }
+papertest = { group = "io.papermc.paper", name = "paper-api", version.ref = "papertest" }
 
 # Platform expectations
 spigot = { group = "org.spigotmc", name = "spigot-api", version.ref = "spigot" }

@@ -79,7 +79,8 @@ dependencies {
     testImplementation(libs.junit.jupiter)
     testImplementation(libs.mockito)
     testImplementation(libs.mockbukkit)
-    testImplementation(libs.paperapi)
+    // The MockBukkit-matched version, not the one we compile against — see libs.versions.toml.
+    testImplementation(libs.papertest)
     testImplementation(libs.placeholderapi)
     testRuntimeOnly(libs.junit.platform.launcher)
 }

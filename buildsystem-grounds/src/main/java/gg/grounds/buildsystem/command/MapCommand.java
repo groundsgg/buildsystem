@@ -29,6 +29,7 @@ import gg.grounds.buildsystem.registry.RegistryException;
 import gg.grounds.buildsystem.registry.TokenSource;
 import gg.grounds.buildsystem.world.MapAddresses;
 import gg.grounds.buildsystem.world.MapLinks;
+import gg.grounds.buildsystem.world.PointsOfInterest;
 import gg.grounds.buildsystem.world.WorldArchive;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -37,10 +38,12 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.event.ClickEvent;
 import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.format.TextDecoration;
+import org.bukkit.Location;
 import org.bukkit.World;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
@@ -62,7 +65,7 @@ import org.jspecify.annotations.Nullable;
 public final class MapCommand implements CommandExecutor, TabCompleter {
 
     private static final List<String> SUBCOMMANDS =
-            List.of("push", "fork", "versions", "link", "status", "login", "logout");
+            List.of("push", "fork", "versions", "link", "status", "login", "logout", "poi");
 
     private final JavaPlugin plugin;
     private final RegistryClient registry;
@@ -153,6 +156,7 @@ public final class MapCommand implements CommandExecutor, TabCompleter {
             case "fork" -> fork(player, world, args.length > 1 ? args[1] : null);
             case "versions" -> versions(player, world);
             case "link" -> link(player, world, args.length > 1 ? args[1] : null);
+            case "poi" -> poi(player, world, args);
             default -> error(player, "Unknown: " + sub + ". Try /map push.");
         }
         return true;
@@ -215,6 +219,112 @@ public final class MapCommand implements CommandExecutor, TabCompleter {
                 pendingLogins.remove(player.getUniqueId());
             }
         });
+    }
+
+    /**
+     * The named places a gamemode needs: spawns, beds, generators.
+     *
+     * <p>Marked by standing where the thing belongs and naming it, because a builder already knows
+     * how to stand somewhere — no coordinates to read off a debug screen, and no sign to place and
+     * later forget to remove. The facing is taken from where they look: a spawn that drops players
+     * into a wall is a bug report nobody can explain from coordinates alone.
+     *
+     * <p>Points live in the world folder, so they travel in the bundle and a version's places are
+     * fixed the moment it is published.
+     */
+    private void poi(Player player, BuildWorld world, String[] args) {
+        World bukkitWorld = world.getWorld().orElse(null);
+        if (bukkitWorld == null) {
+            error(player, "The world is not loaded.");
+            return;
+        }
+        Path folder = bukkitWorld.getWorldFolder().toPath();
+        String action = args.length > 1 ? args[1].toLowerCase(Locale.ROOT) : "list";
+        String name = args.length > 2 ? PointsOfInterest.normaliseName(args[2]) : null;
+
+        switch (action) {
+            case "list" -> listPois(player, folder);
+            case "set" -> setPoi(player, folder, name);
+            case "remove", "delete" -> removePoi(player, folder, name);
+            case "tp", "goto" -> goToPoi(player, folder, name);
+            default -> error(player, "Try /map poi set <name>, list, remove <name> or tp <name>.");
+        }
+    }
+
+    private void listPois(Player player, Path folder) {
+        Map<String, PointsOfInterest.Poi> pois = PointsOfInterest.read(folder);
+        if (pois.isEmpty()) {
+            info(player, "No places marked yet. Stand where one belongs and run /map poi set <name>.");
+            return;
+        }
+        info(player, pois.size() + " place" + (pois.size() == 1 ? "" : "s") + " in this map:");
+        pois.forEach((poiName, poi) -> player.sendMessage(Component.text("  " + poiName, NamedTextColor.AQUA)
+                .append(Component.text(
+                        String.format(
+                                Locale.ROOT, "  %.0f %.0f %.0f", poi.x(), poi.y(), poi.z()),
+                        NamedTextColor.DARK_GRAY))));
+    }
+
+    private void setPoi(Player player, Path folder, @Nullable String name) {
+        if (name == null) {
+            error(player, "Name it: /map poi set lobby.spawn");
+            return;
+        }
+        if (!PointsOfInterest.isValidName(name)) {
+            error(player, "\"" + name + "\" will not do. Names are lowercase and dotted, like team.red.spawn.");
+            return;
+        }
+        Location at = player.getLocation();
+        Map<String, PointsOfInterest.Poi> pois = PointsOfInterest.read(folder);
+        boolean replaced = pois.containsKey(name);
+        pois.put(
+                name,
+                new PointsOfInterest.Poi(at.getX(), at.getY(), at.getZ(), at.getYaw(), at.getPitch()));
+        try {
+            PointsOfInterest.write(folder, pois);
+        } catch (IOException e) {
+            error(player, "Could not save the places: " + e.getMessage());
+            return;
+        }
+        ok(
+                player,
+                (replaced ? "Moved " : "Marked ") + name + " here, facing the way you are looking."
+                        + (replaced ? "" : " It travels with the next push."));
+    }
+
+    private void removePoi(Player player, Path folder, @Nullable String name) {
+        if (name == null) {
+            error(player, "Which one? /map poi remove lobby.spawn");
+            return;
+        }
+        Map<String, PointsOfInterest.Poi> pois = PointsOfInterest.read(folder);
+        if (pois.remove(name) == null) {
+            error(player, "No place called " + name + " in this map.");
+            return;
+        }
+        try {
+            PointsOfInterest.write(folder, pois);
+        } catch (IOException e) {
+            error(player, "Could not save the places: " + e.getMessage());
+            return;
+        }
+        ok(player, "Removed " + name + ". Published versions keep the one they were published with.");
+    }
+
+    private void goToPoi(Player player, Path folder, @Nullable String name) {
+        if (name == null) {
+            error(player, "Where to? /map poi tp lobby.spawn");
+            return;
+        }
+        PointsOfInterest.Poi poi = PointsOfInterest.get(folder, name);
+        if (poi == null) {
+            error(player, "No place called " + name + " in this map.");
+            return;
+        }
+        // Standing in it is the only honest check that a spawn is not inside a wall.
+        player.teleport(new Location(
+                player.getWorld(), poi.x(), poi.y(), poi.z(), poi.yaw(), poi.pitch()));
+        info(player, "This is " + name + ".");
     }
 
     private void link(Player player, BuildWorld world, @Nullable String typedAddress) {

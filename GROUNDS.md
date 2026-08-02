@@ -43,6 +43,8 @@ One plugin, `GroundsMaps`, depending on `BuildSystem`. It gives builders one com
 | `/map push [address] [note]` | Packs the world, uploads it, publishes a new version. The address links a world that has none |
 | `/map fork <namespace/name>` | A new map from this one's current version. Copies no bytes |
 | `/map versions` | The last ten versions and their state |
+| `/map poi set <name>` | Marks where you stand, facing where you look |
+| `/map poi list` / `tp <name>` / `remove <name>` | See them, stand in one, drop one |
 
 Deliberately no digests, no version numbers to type, no bucket names. `/map push bedwars/crater`
 links a fresh world and pushes it in one go; after that `/map push` alone is enough, and anything
@@ -59,6 +61,29 @@ rejects anything a third party invents with `Unknown world data key`.
 
 **Publishing is not going live.** A push makes a version that an admin can put in front of players
 from the portal. Builders never move a pin — that separation is enforced by the registry, not here.
+
+### Places in a map
+
+A gamemode needs to know where players spawn, where a bed stands, where a generator ticks.
+Builders mark those by **standing there**:
+
+```
+/map poi set lobby.spawn
+/map poi set team.red.bed
+/map poi tp team.red.bed
+```
+
+The facing comes from where they look — a spawn that drops players into a wall is a bug report
+nobody can explain from coordinates alone. Names are lowercase and dotted (`team.red.spawn`) so a
+gamemode can ask for a prefix and get a group; what a builder types is normalised into that shape.
+
+**The points live inside the world**, at `grounds/pois.json`, so they travel in the bundle. A
+version's places are therefore fixed the moment it is published, and a gamemode reads them from the
+map it just loaded rather than from a second store that has to be kept in step with which version is
+live. Removing a point changes the next push, never a published version.
+
+The file is written beside itself and moved into place: half a file here is a map with no spawns,
+and nobody would find out until a server loaded it.
 
 ### Bundles are reproducible
 

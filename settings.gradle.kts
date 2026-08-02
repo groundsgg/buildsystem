@@ -2,6 +2,7 @@ rootProject.name = "BuildSystem"
 
 include("buildsystem-api")
 include("buildsystem-core")
+include("buildsystem-grounds")
 
 pluginManagement {
     repositories {

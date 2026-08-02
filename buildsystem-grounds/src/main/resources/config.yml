@@ -1,0 +1,11 @@
+# The map registry on core. Reached over the spoke's egress; the build server does not run
+# next to it, which is also why authentication is Keycloak rather than a ServiceAccount token.
+registry:
+  base-url: "http://service-maps.service-maps.svc.cluster.local:9000"
+
+oidc:
+  token-url: "https://account.grounds.gg/realms/grounds/protocol/openid-connect/token"
+  # The build server's own service-account client. Its secret comes from the environment
+  # (GROUNDS_MAPS_CLIENT_SECRET), never from this file — a config a builder can read is not
+  # a place for a credential that may publish.
+  client-id: "buildserver-maps"

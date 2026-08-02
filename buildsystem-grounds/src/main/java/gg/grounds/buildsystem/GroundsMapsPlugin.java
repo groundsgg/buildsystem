@@ -19,6 +19,8 @@
 package gg.grounds.buildsystem;
 
 import gg.grounds.buildsystem.command.MapCommand;
+import gg.grounds.buildsystem.registry.DeviceFlow;
+import gg.grounds.buildsystem.registry.PlayerLogins;
 import gg.grounds.buildsystem.registry.RegistryClient;
 import java.util.Objects;
 import org.bukkit.plugin.java.JavaPlugin;
@@ -40,21 +42,24 @@ public final class GroundsMapsPlugin extends JavaPlugin {
     public void onEnable() {
         saveDefaultConfig();
 
+        // Optional now that builders sign in themselves: without it the plugin still works,
+        // every action simply has to be somebody's. Refusing to start would take away the login
+        // that makes the credential unnecessary in the first place.
         String clientSecret = System.getenv("GROUNDS_MAPS_CLIENT_SECRET");
         if (clientSecret == null || clientSecret.isBlank()) {
-            // Refusing to start is the safe direction. A build server that silently cannot
-            // publish looks like a working build server until somebody finishes a map.
+            clientSecret = "";
             getLogger()
-                    .severe("GROUNDS_MAPS_CLIENT_SECRET is not set. The build server cannot talk to"
-                            + " the map registry, so this plugin will not enable.");
-            getServer().getPluginManager().disablePlugin(this);
-            return;
+                    .info("GROUNDS_MAPS_CLIENT_SECRET is not set — builders must run /map login"
+                            + " before pushing. That is a fine way to run this.");
         }
 
         this.registry = new RegistryClient(
                 require("registry.base-url"), require("oidc.token-url"), require("oidc.client-id"), clientSecret);
 
-        MapCommand command = new MapCommand(this, registry);
+        DeviceFlow deviceFlow = new DeviceFlow(require("oidc.issuer-url"), require("oidc.device-client-id"));
+        PlayerLogins logins = new PlayerLogins(deviceFlow);
+
+        MapCommand command = new MapCommand(this, registry, deviceFlow, logins);
         Objects.requireNonNull(getCommand("map"), "the map command is declared in plugin.yml")
                 .setExecutor(command);
         Objects.requireNonNull(getCommand("map")).setTabCompleter(command);

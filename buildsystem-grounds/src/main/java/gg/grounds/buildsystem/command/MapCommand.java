@@ -20,10 +20,13 @@ package gg.grounds.buildsystem.command;
 
 import de.eintosti.buildsystem.api.BuildSystemProvider;
 import de.eintosti.buildsystem.api.world.BuildWorld;
+import gg.grounds.buildsystem.registry.DeviceFlow;
 import gg.grounds.buildsystem.registry.MapSummary;
 import gg.grounds.buildsystem.registry.MapVersion;
 import gg.grounds.buildsystem.registry.RegistryClient;
+import gg.grounds.buildsystem.registry.PlayerLogins;
 import gg.grounds.buildsystem.registry.RegistryException;
+import gg.grounds.buildsystem.registry.TokenSource;
 import gg.grounds.buildsystem.world.MapLink;
 import gg.grounds.buildsystem.world.WorldArchive;
 import java.io.IOException;
@@ -34,7 +37,9 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
 import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.event.ClickEvent;
 import net.kyori.adventure.text.format.NamedTextColor;
+import net.kyori.adventure.text.format.TextDecoration;
 import org.bukkit.World;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
@@ -55,14 +60,25 @@ import org.jspecify.annotations.Nullable;
 @NullMarked
 public final class MapCommand implements CommandExecutor, TabCompleter {
 
-    private static final List<String> SUBCOMMANDS = List.of("push", "fork", "versions", "link", "status");
+    private static final List<String> SUBCOMMANDS =
+            List.of("push", "fork", "versions", "link", "status", "login", "logout");
 
     private final JavaPlugin plugin;
     private final RegistryClient registry;
+    private final DeviceFlow deviceFlow;
+    private final PlayerLogins logins;
 
-    public MapCommand(JavaPlugin plugin, RegistryClient registry) {
+    public MapCommand(
+            JavaPlugin plugin, RegistryClient registry, DeviceFlow deviceFlow, PlayerLogins logins) {
         this.plugin = plugin;
         this.registry = registry;
+        this.deviceFlow = deviceFlow;
+        this.logins = logins;
+    }
+
+    /** Who this command acts as: the signed-in builder, else the build server itself. */
+    private TokenSource authFor(Player player) {
+        return logins.actingAs(player.getUniqueId(), registry.serviceAccount());
     }
 
     @Override
@@ -71,6 +87,19 @@ public final class MapCommand implements CommandExecutor, TabCompleter {
             sender.sendMessage("Run this in-game, standing in the world you mean.");
             return true;
         }
+        String early = args.length == 0 ? "" : args[0].toLowerCase(Locale.ROOT);
+        // Signing in is not about a world, so it must work while standing anywhere — including
+        // the lobby a builder lands in.
+        if (early.equals("login")) {
+            login(player);
+            return true;
+        }
+        if (early.equals("logout")) {
+            logins.forget(player.getUniqueId());
+            ok(player, "Signed out. Pushes now run as the build server.");
+            return true;
+        }
+
         BuildWorld world =
                 BuildSystemProvider.get().getWorldService().getWorldStorage().getBuildWorld(player.getWorld());
         if (world == null) {
@@ -92,6 +121,12 @@ public final class MapCommand implements CommandExecutor, TabCompleter {
     // ------------------------------------------------------------- commands
 
     private void status(Player player, BuildWorld world) {
+        String signedIn = logins.nameOf(player.getUniqueId());
+        info(
+                player,
+                signedIn == null
+                        ? "Not signed in — pushes run as the build server. /map login changes that."
+                        : "Signed in as " + signedIn + ".");
         String address = MapLink.addressOf(world);
         if (address == null) {
             info(player, "This world is not linked to a map yet. Use /map link <namespace/name>.");
@@ -104,6 +139,31 @@ public final class MapCommand implements CommandExecutor, TabCompleter {
                         + address
                         + (base == null ? " (not built on a published version)" : ", built on v" + base)
                         + ".");
+    }
+
+    /**
+     * The device flow, which exists for exactly this: a Minecraft client cannot follow a redirect,
+     * and a password typed into chat lands in the server log and in every chat-logging plugin.
+     * The builder gets a link, opens it where they already have a browser, and the server waits.
+     */
+    private void login(Player player) {
+        if (logins.isSignedIn(player.getUniqueId())) {
+            info(player, "Already signed in as " + logins.nameOf(player.getUniqueId()) + ".");
+            return;
+        }
+        offMainThread(player, () -> {
+            DeviceFlow.Pending pending = deviceFlow.begin();
+            player.sendMessage(Component.text("Open this to sign in:", NamedTextColor.GRAY));
+            player.sendMessage(
+                    Component.text(pending.verificationUri(), NamedTextColor.AQUA)
+                            .decorate(TextDecoration.UNDERLINED)
+                            .clickEvent(ClickEvent.openUrl(pending.verificationUri())));
+            info(player, "If it asks for a code: " + pending.userCode());
+
+            DeviceFlow.Tokens tokens = deviceFlow.awaitApproval(pending);
+            logins.remember(player.getUniqueId(), player.getName(), tokens);
+            ok(player, "Signed in. Pushes are now recorded as you.");
+        });
     }
 
     private void link(Player player, BuildWorld world, @Nullable String address) {
@@ -122,11 +182,12 @@ public final class MapCommand implements CommandExecutor, TabCompleter {
             error(player, "Already linked to " + existing + ".");
             return;
         }
+        TokenSource auth = authFor(player);
         offMainThread(player, () -> {
-            List<MapSummary> maps = registry.listMaps();
+            List<MapSummary> maps = registry.listMaps(auth);
             boolean exists = maps.stream().anyMatch(map -> map.address().equals(address));
             if (!exists) {
-                registry.createMap(address, world.getName(), "ARENA", false);
+                registry.createMap(auth, address, world.getName(), "ARENA", false);
             }
             onMainThread(() -> {
                 MapLink.link(world, address, null);
@@ -156,6 +217,7 @@ public final class MapCommand implements CommandExecutor, TabCompleter {
 
         Path folder = bukkitWorld.getWorldFolder().toPath();
         Integer parent = MapLink.baseVersionOf(world);
+        TokenSource auth = authFor(player);
         info(player, "Packing " + address + "…");
 
         offMainThread(player, () -> {
@@ -165,7 +227,7 @@ public final class MapCommand implements CommandExecutor, TabCompleter {
                 onMainThread(() -> bukkitWorld.setAutoSave(autoSave));
                 info(player, "Uploading " + mib(packed.sizeBytes()) + " to the registry…");
                 MapVersion published =
-                        registry.push(address, packed.file(), packed.sha256(), packed.sizeBytes(), parent, note);
+                        registry.push(auth, address, packed.file(), packed.sha256(), packed.sizeBytes(), parent, note);
                 onMainThread(() -> {
                     MapLink.link(world, address, published.version());
                     ok(
@@ -176,7 +238,9 @@ public final class MapCommand implements CommandExecutor, TabCompleter {
                                     + published.version()
                                     + " ("
                                     + mib(packed.sizeBytes())
-                                    + "). An admin decides when it goes live.");
+                                    + ") as "
+                                    + auth.describe()
+                                    + ". An admin decides when it goes live.");
                 });
             } finally {
                 // Whatever happened, autosave goes back on and the temp file goes away.
@@ -197,8 +261,9 @@ public final class MapCommand implements CommandExecutor, TabCompleter {
             return;
         }
         Integer base = MapLink.baseVersionOf(world);
+        TokenSource auth = authFor(player);
         offMainThread(player, () -> {
-            MapSummary forked = registry.fork(address, target, base, null);
+            MapSummary forked = registry.fork(auth, address, target, base, null);
             ok(
                     player,
                     "Forked "
@@ -215,8 +280,9 @@ public final class MapCommand implements CommandExecutor, TabCompleter {
             error(player, "This world is not linked to a map.");
             return;
         }
+        TokenSource auth = authFor(player);
         offMainThread(player, () -> {
-            List<MapVersion> versions = registry.listVersions(address);
+            List<MapVersion> versions = registry.listVersions(auth, address);
             if (versions.isEmpty()) {
                 info(player, "No versions yet — /map push makes the first one.");
                 return;

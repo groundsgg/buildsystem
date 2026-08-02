@@ -78,11 +78,27 @@ public final class RegistryClient {
         this.clientSecret = clientSecret;
     }
 
+    /**
+     * The build server's own identity, for callers with nobody signed in. Empty credentials mean
+     * the deployment never configured one — say so rather than fail with a 401 that reads like a
+     * permissions problem.
+     */
+    public TokenSource serviceAccount() {
+        return () -> {
+            if (clientSecret.isBlank()) {
+                throw new RegistryException(
+                        "Nobody is signed in and this build server has no service account."
+                                + " Run /map login.");
+            }
+            return accessToken();
+        };
+    }
+
     // ----------------------------------------------------------------- maps
 
     /** Every map this service account is allowed to see. */
-    public List<MapSummary> listMaps() throws RegistryException {
-        JsonElement body = send(request("/v1/maps").GET(), "list maps");
+    public List<MapSummary> listMaps(TokenSource auth) throws RegistryException {
+        JsonElement body = send(request(auth, "/v1/maps").GET(), "list maps");
         List<MapSummary> maps = new ArrayList<>();
         for (JsonElement element : body.getAsJsonArray()) {
             maps.add(MapSummary.from(element.getAsJsonObject()));
@@ -90,7 +106,8 @@ public final class RegistryClient {
         return maps;
     }
 
-    public MapSummary createMap(String address, String displayName, String kind, boolean stateful)
+    public MapSummary createMap(
+            TokenSource auth, String address, String displayName, String kind, boolean stateful)
             throws RegistryException {
         JsonObject request = new JsonObject();
         request.addProperty("address", address);
@@ -98,11 +115,11 @@ public final class RegistryClient {
         request.addProperty("kind", kind);
         request.addProperty("stateful", stateful);
         return MapSummary.from(
-                send(json("/v1/maps", request), "create " + address).getAsJsonObject());
+                send(json(auth, "/v1/maps", request), "create " + address).getAsJsonObject());
     }
 
-    public List<MapVersion> listVersions(String address) throws RegistryException {
-        JsonElement body = send(request(versionsPath(address)).GET(), "list versions of " + address);
+    public List<MapVersion> listVersions(TokenSource auth, String address) throws RegistryException {
+        JsonElement body = send(request(auth, versionsPath(address)).GET(), "list versions of " + address);
         List<MapVersion> versions = new ArrayList<>();
         for (JsonElement element : body.getAsJsonArray()) {
             versions.add(MapVersion.from(element.getAsJsonObject()));
@@ -121,6 +138,7 @@ public final class RegistryClient {
      * @param sha256 that archive's digest, which becomes its address on the CDN
      */
     public MapVersion push(
+            TokenSource auth,
             String address,
             Path archive,
             String sha256,
@@ -128,7 +146,7 @@ public final class RegistryClient {
             @Nullable Integer parentVersion,
             @Nullable String note)
             throws RegistryException {
-        JsonObject upload = send(request(path(address) + "/uploads").POST(noBody()), "open an upload")
+        JsonObject upload = send(request(auth, path(address) + "/uploads").POST(noBody()), "open an upload")
                 .getAsJsonObject();
         String uploadId = upload.get("uploadId").getAsString();
         putArchive(upload.get("url").getAsString(), archive);
@@ -145,20 +163,25 @@ public final class RegistryClient {
             commit.addProperty("note", note);
         }
         MapVersion committed =
-                MapVersion.from(send(json(versionsPath(address), commit), "commit a version of " + address)
+                MapVersion.from(send(json(auth, versionsPath(address), commit), "commit a version of " + address)
                         .getAsJsonObject());
 
         JsonObject publish = new JsonObject();
         publish.addProperty("bundleSha256", sha256);
         publish.addProperty("sizeBytes", sizeBytes);
         return MapVersion.from(send(
-                        json(versionsPath(address) + "/" + committed.version() + "/publish", publish),
+                        json(auth, versionsPath(address) + "/" + committed.version() + "/publish", publish),
                         "publish version " + committed.version())
                 .getAsJsonObject());
     }
 
     /** A new map from an existing version. Copies no bytes; the fork is usable immediately. */
-    public MapSummary fork(String source, String target, @Nullable Integer fromVersion, @Nullable String displayName)
+    public MapSummary fork(
+            TokenSource auth,
+            String source,
+            String target,
+            @Nullable Integer fromVersion,
+            @Nullable String displayName)
             throws RegistryException {
         JsonObject request = new JsonObject();
         request.addProperty("target", target);
@@ -169,7 +192,7 @@ public final class RegistryClient {
             request.addProperty("displayName", displayName);
         }
         return MapSummary.from(
-                send(json(path(source) + "/forks", request), "fork " + source).getAsJsonObject());
+                send(json(auth, path(source) + "/forks", request), "fork " + source).getAsJsonObject());
     }
 
     // ------------------------------------------------------------ internals
@@ -195,15 +218,16 @@ public final class RegistryClient {
         }
     }
 
-    private HttpRequest.Builder request(String path) throws RegistryException {
+    private HttpRequest.Builder request(TokenSource auth, String path) throws RegistryException {
         return HttpRequest.newBuilder(URI.create(baseUrl + path))
                 .timeout(TIMEOUT)
-                .header("Authorization", "Bearer " + accessToken())
+                .header("Authorization", "Bearer " + auth.token())
                 .header("Accept", "application/json");
     }
 
-    private HttpRequest.Builder json(String path, JsonObject body) throws RegistryException {
-        return request(path)
+    private HttpRequest.Builder json(TokenSource auth, String path, JsonObject body)
+            throws RegistryException {
+        return request(auth, path)
                 .header("Content-Type", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString(GSON.toJson(body)));
     }

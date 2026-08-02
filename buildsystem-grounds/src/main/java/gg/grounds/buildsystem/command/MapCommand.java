@@ -27,6 +27,7 @@ import gg.grounds.buildsystem.registry.RegistryClient;
 import gg.grounds.buildsystem.registry.PlayerLogins;
 import gg.grounds.buildsystem.registry.RegistryException;
 import gg.grounds.buildsystem.registry.TokenSource;
+import gg.grounds.buildsystem.world.MapAddresses;
 import gg.grounds.buildsystem.world.MapLinks;
 import gg.grounds.buildsystem.world.WorldArchive;
 import java.io.IOException;
@@ -95,6 +96,25 @@ public final class MapCommand implements CommandExecutor, TabCompleter {
         } catch (java.io.IOException e) {
             error(player, "Saved to the registry, but this server could not remember the link: " + e.getMessage());
         }
+    }
+
+    /**
+     * The address the registry will take, or null after telling the builder why not. Typing a
+     * world name is the normal case, and world names are not addresses: the registry allows only
+     * lowercase letters, digits and hyphens because an address becomes a URL path and an object
+     * key. Saying which address was used keeps the translation from being a silent one.
+     */
+    private @Nullable String usableAddress(Player player, String typed) {
+        String normalised = MapAddresses.normalise(typed);
+        if (normalised == null) {
+            error(player, "\"" + typed + "\" is not a map address. It looks like bedwars/crater — a"
+                    + " gamemode, a slash, and a name.");
+            return null;
+        }
+        if (!normalised.equals(typed)) {
+            info(player, "Using " + normalised + " — addresses are lowercase, with hyphens for spaces.");
+        }
+        return normalised;
     }
 
     /** Who this command acts as: the signed-in builder, else the build server itself. */
@@ -200,15 +220,16 @@ public final class MapCommand implements CommandExecutor, TabCompleter {
         });
     }
 
-    private void link(Player player, BuildWorld world, @Nullable String address) {
-        if (address == null) {
+    private void link(Player player, BuildWorld world, @Nullable String typedAddress) {
+        if (typedAddress == null) {
             error(player, "Which map? /map link bedwars/4x4-baumhaus");
             return;
         }
-        if (!address.contains("/")) {
-            error(player, "A map address is <namespace>/<name>, e.g. bedwars/4x4-baumhaus.");
+        String usable = usableAddress(player, typedAddress);
+        if (usable == null) {
             return;
         }
+        final String address = usable;
         String existing = links.addressOf(world.getUniqueId());
         if (existing != null) {
             // Relinking silently would make the next push land on a different map with no
@@ -236,12 +257,19 @@ public final class MapCommand implements CommandExecutor, TabCompleter {
         // is a note, because repeating the address every time would be noise.
         String linked = links.addressOf(world.getUniqueId());
         boolean linkFirst = linked == null && args.length > 1 && args[1].contains("/");
-        String address = linked != null ? linked : (linkFirst ? args[1] : null);
         String note = join(args, linkFirst ? 2 : 1);
-        if (address == null) {
+        String resolved = linked;
+        if (linkFirst) {
+            resolved = usableAddress(player, args[1]);
+            if (resolved == null) {
+                return;
+            }
+        }
+        if (resolved == null) {
             error(player, "Which map? /map push <namespace/name> — or /map link it once.");
             return;
         }
+        final String address = resolved;
         World bukkitWorld = world.getWorld().orElse(null);
         if (bukkitWorld == null) {
             error(player, "The world is not loaded.");

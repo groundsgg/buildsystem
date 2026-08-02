@@ -120,9 +120,9 @@ java -Xmx4G -jar paper-26.2-87.jar --nogui
 
 Check it took: the log should say `Map registry: <url>` on enable instead of the error above.
 
-If the registry runs on core and you are building locally, point `registry.base-url` in
-`plugins/GroundsMaps/config.yml` at something you can actually reach — the in-cluster address only
-resolves inside core.
+`registry.base-url` defaults to `https://api.grounds.gg`, which works from anywhere — the registry
+is served there under `/v1/maps`, alongside forge. There is no in-cluster address to fall back to:
+the registry runs on core and the build server does not.
 
 ### Setting it: the deployed build server
 

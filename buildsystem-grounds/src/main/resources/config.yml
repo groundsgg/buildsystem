@@ -1,7 +1,8 @@
-# The map registry on core. Reached over the spoke's egress; the build server does not run
-# next to it, which is also why authentication is Keycloak rather than a ServiceAccount token.
+# The map registry, on the shared API origin. Not an in-cluster address: the registry runs on
+# core and the build server does not, so `svc.cluster.local` resolves to nothing here — which is
+# the same reason authentication is Keycloak rather than a ServiceAccount token.
 registry:
-  base-url: "http://service-maps.service-maps.svc.cluster.local:9000"
+  base-url: "https://api.grounds.gg"
 
 oidc:
   token-url: "https://account.grounds.gg/realms/grounds/protocol/openid-connect/token"

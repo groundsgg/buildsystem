@@ -1,4 +1,5 @@
 import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
+import java.util.zip.ZipFile
 
 applyCoreConfiguration()
 
@@ -77,9 +78,26 @@ tasks.named<ShadowJar>("shadowJar") {
     archiveFileName.set("GroundsMaps-${project.version}.jar")
     destinationDirectory.set(rootProject.layout.buildDirectory.dir("libs"))
 
-    // Both are shaded because a build server also runs other plugins, and two copies of
-    // commons-compress on one classpath is a class-loading argument nobody wins.
+    // commons-compress is relocated because a build server runs other plugins and two copies on
+    // one classpath is a class-loading argument nobody wins.
+    //
+    // zstd-jni is NOT, and must not be: it is a JNI library whose native code registers its
+    // methods under the original package name. Renaming the Java classes leaves those natives
+    // unfindable, and the failure arrives as UnsatisfiedLinkError the first time a world is
+    // packed — long after the build looked fine.
     val shadePath = "gg.grounds.buildsystem.external"
     relocate("org.apache.commons.compress", "$shadePath.compress")
-    relocate("com.github.luben.zstd", "$shadePath.zstd")
+
+    // A relocation of zstd builds cleanly and only fails when a builder packs their first world,
+    // which is the worst possible moment to find out. Check the jar instead.
+    doLast {
+        val jar = archiveFile.get().asFile
+        val intact = ZipFile(jar).use { zip ->
+            zip.stream().anyMatch { it.name.startsWith("com/github/luben/zstd/") }
+        }
+        check(intact) {
+            "zstd-jni is missing or relocated in $jar. Its native code registers methods under the" +
+                " original package name, so renaming the classes leaves them unfindable."
+        }
+    }
 }

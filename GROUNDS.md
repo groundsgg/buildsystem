@@ -59,20 +59,99 @@ be indistinguishable from a real edit.
 Player state (`playerdata`, `stats`, `advancements`) and `session.lock` / `uid.dat` are left out. A
 map is a place, not the people who visited it while it was built.
 
-### Configuration
+## Setting it up
 
-`plugins/GroundsMaps/config.yml` holds the registry URL and the OIDC client id. The client **secret**
-comes from `GROUNDS_MAPS_CLIENT_SECRET` in the environment and never from a file a builder can read.
-The plugin refuses to enable without it, because a build server that silently cannot publish looks
-like a working build server until somebody finishes a map.
+The plugin refuses to enable without a credential:
 
-### Still needed before this runs
+```
+[GroundsMaps] GROUNDS_MAPS_CLIENT_SECRET is not set. The build server cannot talk to
+the map registry, so this plugin will not enable.
+```
 
-- A Keycloak client `buildserver-maps` with a service account, whose tokens carry `aud: service-maps`,
-  in a group the registry grants authoring and publishing to (`builder`).
-- The registry reachable from the build server. It runs on core; the build server runs on the dev
-  spoke, which is exactly why authentication is Keycloak rather than a ServiceAccount token — a
-  token minted by one cluster does not verify against the other's JWKS.
+That is deliberate. A build server that silently cannot publish looks like a working build server
+until somebody finishes a map and loses the afternoon.
+
+### Where the secret comes from
+
+It is **not** a value anyone types. `buildserver-maps` is a Keycloak client created by
+`grounds-pulumi` (`core/src/platform/buildserver-keycloak.ts`), and Keycloak generates its secret.
+The core stack exports it:
+
+```bash
+cd grounds-pulumi/core
+pulumi stack select grounds-core-upcloud
+pulumi stack output buildserverMapsClientSecret --show-secrets
+```
+
+If that output is empty, the client has not been applied yet — check that `core:enableKeycloakClients`
+is on and that the last core apply was green.
+
+Three things the Pulumi module sets up that the registry checks, so none of them is a manual step:
+
+| What | Why it matters |
+|---|---|
+| `aud: service-maps` in the token | The registry validates the audience. A token minted for another client is refused even though the realm signed it. |
+| a `groups` claim | The registry authorises on group membership; without the mapper the token is valid and can do nothing. |
+| the service account in `builder` | `builder` may author and publish. Only `admin` moves a pin — going live stays in the portal. |
+
+The client is a managed Pulumi resource rather than an entry in the realm import, because
+re-importing the realm rotates other clients' secrets and Infisical does not track that. The failure
+mode is forge returning 401 hours after an unrelated change.
+
+### Setting it: a server you run yourself
+
+The plugin reads the environment, so export it before starting Paper — never put it in
+`config.yml`, which builders can read:
+
+```bash
+export GROUNDS_MAPS_CLIENT_SECRET='<the value from pulumi stack output>'
+java -Xmx4G -jar paper-26.2-87.jar --nogui
+```
+
+Shell history keeps that line. Either prefix the export with a space (most shells then skip it) or
+keep it in a file only you can read and source it:
+
+```bash
+install -m 600 /dev/null ~/.grounds-maps.env
+echo "GROUNDS_MAPS_CLIENT_SECRET='<value>'" > ~/.grounds-maps.env
+set -a; . ~/.grounds-maps.env; set +a
+java -Xmx4G -jar paper-26.2-87.jar --nogui
+```
+
+Check it took: the log should say `Map registry: <url>` on enable instead of the error above.
+
+If the registry runs on core and you are building locally, point `registry.base-url` in
+`plugins/GroundsMaps/config.yml` at something you can actually reach — the in-cluster address only
+resolves inside core.
+
+### Setting it: the deployed build server
+
+Stage the same value into Infisical for the cluster the build server runs on, and let the
+`InfisicalSecret` render it into a Kubernetes Secret the pod mounts as an environment variable:
+
+```yaml
+env:
+  - name: GROUNDS_MAPS_CLIENT_SECRET
+    valueFrom:
+      secretKeyRef:
+        name: buildserver-maps
+        key: GROUNDS_MAPS_CLIENT_SECRET
+```
+
+Do not bake it into an image or a chart value — a chart that carries a secret puts it in the release
+history, where it outlives every rotation.
+
+### Rotating it
+
+Delete the client secret in Keycloak (or `pulumi destroy` just that resource) and re-apply; the
+module regenerates it. Then re-read the stack output and restage. Nothing caches it beyond the
+plugin's process, so a restart is the whole rollout.
+
+### Also needed
+
+The registry has to be reachable from the build server. It runs on core; the build server runs on
+the dev spoke, which is exactly why authentication is Keycloak rather than a ServiceAccount token —
+a token minted by one cluster does not verify against the other's JWKS.
 
 ### Known gap
 

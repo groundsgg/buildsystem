@@ -1,3 +1,12 @@
+> ### This is the Grounds fork
+>
+> `groundsgg/buildsystem` runs the Grounds build server. It adds a `GroundsMaps` plugin that
+> publishes build worlds to the map registry, and compiles against **Paper 26.2** rather than Spigot.
+>
+> **Setting it up — including where `GROUNDS_MAPS_CLIENT_SECRET` comes from and how to set it —
+> is in [GROUNDS.md](GROUNDS.md).** Everything below this line is upstream's own README and
+> describes BuildSystem itself.
+
 ![Screenshot](.github/images/header.png)
 
 # BuildSystem ![GitHub Workflow Status (branch)](https://img.shields.io/github/actions/workflow/status/thomasmny/BuildSystem/build.yml?branch=master) ![version](https://img.shields.io/github/v/release/thomasmny/BuildSystem) [![Discord](https://img.shields.io/discord/419460301403193344.svg?label=&logo=discord&logoColor=ffffff&color=7389D8&labelColor=6A7EC2)](https://discord.gg/rduPF3yk62)

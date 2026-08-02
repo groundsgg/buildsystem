@@ -215,6 +215,11 @@ public final class SetupProfile {
         return base + ".64";
     }
 
+    /** The shared things, for tab completion. Suggesting one the profile refuses is worse than none. */
+    public static List<String> globalThings(String gamemode) {
+        return GLOBAL.getOrDefault(gamemode.toLowerCase(Locale.ROOT), List.of());
+    }
+
     /** What a builder may write after a team, for the "unknown thing" reply and tab completion. */
     public static List<String> thingsFor(String gamemode) {
         return PER_TEAM.getOrDefault(gamemode.toLowerCase(Locale.ROOT), List.of());

@@ -178,8 +178,10 @@ public final class MapSetupCommand implements CommandExecutor, TabCompleter {
             // The colours first: they are what gets typed, and the shared things are few.
             matches.addAll(setup.teams());
             matches.addAll(SetupProfile.thingsFor(setup.gamemode()));
-            matches.add("lobby");
-            matches.add("spectator");
+            // Only what the profile accepts: there is no waiting lobby in this game — players go
+            // from the main lobby into the match on a countdown — so suggesting one would offer a
+            // word the command then refuses.
+            matches.addAll(SetupProfile.globalThings(setup.gamemode()));
         } else if (args.length == 2) {
             matches.addAll(SetupProfile.thingsFor(setup.gamemode()));
         }

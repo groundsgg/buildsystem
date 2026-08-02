@@ -43,18 +43,16 @@ class DeviceFlowPkceTest {
     void sends_an_s256_challenge_derived_from_the_verifier() throws Exception {
         HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         Map<String, String> received = new HashMap<>();
-        server.createContext(
-                "/realms/x/protocol/openid-connect/auth/device",
-                exchange -> {
-                    received.putAll(parse(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8)));
-                    byte[] body =
-                            ("{\"device_code\":\"dc\",\"user_code\":\"UC\",\"verification_uri\":\"https://example/device\"}")
-                                    .getBytes(StandardCharsets.UTF_8);
-                    exchange.getResponseHeaders().add("Content-Type", "application/json");
-                    exchange.sendResponseHeaders(200, body.length);
-                    exchange.getResponseBody().write(body);
-                    exchange.close();
-                });
+        server.createContext("/realms/x/protocol/openid-connect/auth/device", exchange -> {
+            received.putAll(parse(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8)));
+            byte[] body =
+                    ("{\"device_code\":\"dc\",\"user_code\":\"UC\",\"verification_uri\":\"https://example/device\"}")
+                            .getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().add("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, body.length);
+            exchange.getResponseBody().write(body);
+            exchange.close();
+        });
         server.start();
         try {
             String issuer = "http://127.0.0.1:" + server.getAddress().getPort() + "/realms/x";

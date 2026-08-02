@@ -87,8 +87,7 @@ public final class RegistryClient {
         return () -> {
             if (clientSecret.isBlank()) {
                 throw new RegistryException(
-                        "Nobody is signed in and this build server has no service account."
-                                + " Run /map login.");
+                        "Nobody is signed in and this build server has no service account." + " Run /map login.");
             }
             return accessToken();
         };
@@ -106,8 +105,7 @@ public final class RegistryClient {
         return maps;
     }
 
-    public MapSummary createMap(
-            TokenSource auth, String address, String displayName, String kind, boolean stateful)
+    public MapSummary createMap(TokenSource auth, String address, String displayName, String kind, boolean stateful)
             throws RegistryException {
         JsonObject request = new JsonObject();
         request.addProperty("address", address);
@@ -177,11 +175,7 @@ public final class RegistryClient {
 
     /** A new map from an existing version. Copies no bytes; the fork is usable immediately. */
     public MapSummary fork(
-            TokenSource auth,
-            String source,
-            String target,
-            @Nullable Integer fromVersion,
-            @Nullable String displayName)
+            TokenSource auth, String source, String target, @Nullable Integer fromVersion, @Nullable String displayName)
             throws RegistryException {
         JsonObject request = new JsonObject();
         request.addProperty("target", target);
@@ -191,8 +185,8 @@ public final class RegistryClient {
         if (displayName != null) {
             request.addProperty("displayName", displayName);
         }
-        return MapSummary.from(
-                send(json(auth, path(source) + "/forks", request), "fork " + source).getAsJsonObject());
+        return MapSummary.from(send(json(auth, path(source) + "/forks", request), "fork " + source)
+                .getAsJsonObject());
     }
 
     // ------------------------------------------------------------ internals
@@ -225,8 +219,7 @@ public final class RegistryClient {
                 .header("Accept", "application/json");
     }
 
-    private HttpRequest.Builder json(TokenSource auth, String path, JsonObject body)
-            throws RegistryException {
+    private HttpRequest.Builder json(TokenSource auth, String path, JsonObject body) throws RegistryException {
         return request(auth, path)
                 .header("Content-Type", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString(GSON.toJson(body)));

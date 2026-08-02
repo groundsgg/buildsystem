@@ -23,8 +23,8 @@ import de.eintosti.buildsystem.api.world.BuildWorld;
 import gg.grounds.buildsystem.registry.DeviceFlow;
 import gg.grounds.buildsystem.registry.MapSummary;
 import gg.grounds.buildsystem.registry.MapVersion;
-import gg.grounds.buildsystem.registry.RegistryClient;
 import gg.grounds.buildsystem.registry.PlayerLogins;
+import gg.grounds.buildsystem.registry.RegistryClient;
 import gg.grounds.buildsystem.registry.RegistryException;
 import gg.grounds.buildsystem.registry.TokenSource;
 import gg.grounds.buildsystem.world.MapAddresses;
@@ -73,11 +73,7 @@ public final class MapCommand implements CommandExecutor, TabCompleter {
     private final java.util.Set<java.util.UUID> pendingLogins = java.util.concurrent.ConcurrentHashMap.newKeySet();
 
     public MapCommand(
-            JavaPlugin plugin,
-            RegistryClient registry,
-            DeviceFlow deviceFlow,
-            PlayerLogins logins,
-            MapLinks links) {
+            JavaPlugin plugin, RegistryClient registry, DeviceFlow deviceFlow, PlayerLogins logins, MapLinks links) {
         this.plugin = plugin;
         this.registry = registry;
         this.deviceFlow = deviceFlow;
@@ -107,8 +103,10 @@ public final class MapCommand implements CommandExecutor, TabCompleter {
     private @Nullable String usableAddress(Player player, String typed) {
         String normalised = MapAddresses.normalise(typed);
         if (normalised == null) {
-            error(player, "\"" + typed + "\" is not a map address. It looks like bedwars/crater — a"
-                    + " gamemode, a slash, and a name.");
+            error(
+                    player,
+                    "\"" + typed + "\" is not a map address. It looks like bedwars/crater — a"
+                            + " gamemode, a slash, and a name.");
             return null;
         }
         if (!normalised.equals(typed)) {
@@ -203,10 +201,9 @@ public final class MapCommand implements CommandExecutor, TabCompleter {
         offMainThread(player, () -> {
             DeviceFlow.Pending pending = deviceFlow.begin();
             player.sendMessage(Component.text("Open this to sign in:", NamedTextColor.GRAY));
-            player.sendMessage(
-                    Component.text(pending.verificationUri(), NamedTextColor.AQUA)
-                            .decorate(TextDecoration.UNDERLINED)
-                            .clickEvent(ClickEvent.openUrl(pending.verificationUri())));
+            player.sendMessage(Component.text(pending.verificationUri(), NamedTextColor.AQUA)
+                    .decorate(TextDecoration.UNDERLINED)
+                    .clickEvent(ClickEvent.openUrl(pending.verificationUri())));
             info(player, "If it asks for a code: " + pending.userCode());
 
             info(player, "Waiting — the link is good for the next few minutes.");

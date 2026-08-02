@@ -104,10 +104,9 @@ public final class DeviceFlow {
                 "start a login");
         // Prefer the complete URI: it carries the code, so the builder confirms rather than
         // types. Keycloak omits it in some configurations, hence the fallback.
-        String verification =
-                body.has("verification_uri_complete")
-                        ? body.get("verification_uri_complete").getAsString()
-                        : body.get("verification_uri").getAsString();
+        String verification = body.has("verification_uri_complete")
+                ? body.get("verification_uri_complete").getAsString()
+                : body.get("verification_uri").getAsString();
         long interval = body.has("interval") ? body.get("interval").getAsLong() : 5;
         long expiresIn = body.has("expires_in") ? body.get("expires_in").getAsLong() : 600;
         return new Pending(
@@ -132,20 +131,19 @@ public final class DeviceFlow {
                 Thread.currentThread().interrupt();
                 throw new RegistryException("the login was interrupted");
             }
-            HttpResponse<String> response =
-                    post(
-                            tokenUrl,
-                            "grant_type=urn:ietf:params:oauth:grant-type:device_code"
-                                    + "&client_id="
-                                    + enc(clientId)
-                                    + "&device_code="
-                                    + enc(pending.deviceCode())
-                                    // Without this the challenge registered at the device request
-                                    // has nothing to verify against, and Keycloak refuses the code
-                                    // — but only AFTER the builder has approved in the browser.
-                                    + "&code_verifier="
-                                    + enc(pending.codeVerifier()),
-                            "complete the login");
+            HttpResponse<String> response = post(
+                    tokenUrl,
+                    "grant_type=urn:ietf:params:oauth:grant-type:device_code"
+                            + "&client_id="
+                            + enc(clientId)
+                            + "&device_code="
+                            + enc(pending.deviceCode())
+                            // Without this the challenge registered at the device request
+                            // has nothing to verify against, and Keycloak refuses the code
+                            // — but only AFTER the builder has approved in the browser.
+                            + "&code_verifier="
+                            + enc(pending.codeVerifier()),
+                    "complete the login");
             if (response.statusCode() == 200) {
                 return toTokens(JsonParser.parseString(response.body()).getAsJsonObject());
             }
@@ -157,13 +155,13 @@ public final class DeviceFlow {
                 // The spec's backpressure signal: poll slower or the server stops answering.
                 case "slow_down" -> interval = interval.plusSeconds(5);
                 case "access_denied" -> throw new RegistryException("The login was declined.");
-                    // Keycloak answers `invalid_grant` ("Device code not valid") rather than the
-                    // spec's `expired_token` for a code that expired, was already used, or belongs
-                    // to an earlier /map login. All three mean the same thing to a builder.
+                // Keycloak answers `invalid_grant` ("Device code not valid") rather than the
+                // spec's `expired_token` for a code that expired, was already used, or belongs
+                // to an earlier /map login. All three mean the same thing to a builder.
                 case "expired_token", "invalid_grant" ->
-                        throw new RegistryException("That sign-in link is no longer valid (" 
-                                + describeOAuthError(response)
-                                + "). Run /map login again and open the newest link.");
+                    throw new RegistryException("That sign-in link is no longer valid ("
+                            + describeOAuthError(response)
+                            + "). Run /map login again and open the newest link.");
                 default -> throw new RegistryException("The login failed: " + describeOAuthError(response));
             }
         }
@@ -172,14 +170,10 @@ public final class DeviceFlow {
 
     /** Exchanges a refresh token. Returns null when it is no longer accepted. */
     public Tokens refresh(String refreshToken) throws RegistryException {
-        HttpResponse<String> response =
-                post(
-                        tokenUrl,
-                        "grant_type=refresh_token&client_id="
-                                + enc(clientId)
-                                + "&refresh_token="
-                                + enc(refreshToken),
-                        "refresh the login");
+        HttpResponse<String> response = post(
+                tokenUrl,
+                "grant_type=refresh_token&client_id=" + enc(clientId) + "&refresh_token=" + enc(refreshToken),
+                "refresh the login");
         if (response.statusCode() != 200) {
             throw new RegistryException("Your login expired. Run /map login again.");
         }
@@ -200,14 +194,12 @@ public final class DeviceFlow {
         HttpResponse<String> response = post(url, body, what);
         if (response.statusCode() / 100 != 2) {
             // Never the body: a failed token response can echo credentials back.
-            throw new RegistryException(
-                    "Could not " + what + " (HTTP " + response.statusCode() + ").");
+            throw new RegistryException("Could not " + what + " (HTTP " + response.statusCode() + ").");
         }
         return JsonParser.parseString(response.body()).getAsJsonObject();
     }
 
-    private HttpResponse<String> post(String url, String body, String what)
-            throws RegistryException {
+    private HttpResponse<String> post(String url, String body, String what) throws RegistryException {
         try {
             return http.send(
                     HttpRequest.newBuilder(URI.create(url))
@@ -248,8 +240,7 @@ public final class DeviceFlow {
 
     private static String challengeFor(String verifier) {
         try {
-            byte[] digest =
-                    MessageDigest.getInstance("SHA-256").digest(verifier.getBytes(StandardCharsets.US_ASCII));
+            byte[] digest = MessageDigest.getInstance("SHA-256").digest(verifier.getBytes(StandardCharsets.US_ASCII));
             return Base64.getUrlEncoder().withoutPadding().encodeToString(digest);
         } catch (NoSuchAlgorithmException e) {
             throw new IllegalStateException("SHA-256 is required by the platform", e);

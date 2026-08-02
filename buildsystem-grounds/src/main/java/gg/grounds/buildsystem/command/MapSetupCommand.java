@@ -108,8 +108,10 @@ public final class MapSetupCommand implements CommandExecutor, TabCompleter {
         if (!group.equals("map") && !setup.teams().contains(group)) {
             error(
                     player,
-                    "This map's teams are " + String.join(", ", setup.teams()) + " — " + group
-                            + " is not one of them.");
+                    setup.teams().isEmpty()
+                            ? "A " + setup.gamemode() + " has no teams — just /ms " + thing + "."
+                            : "This map's teams are " + String.join(", ", setup.teams()) + " — " + group
+                                    + " is not one of them.");
             return true;
         }
 

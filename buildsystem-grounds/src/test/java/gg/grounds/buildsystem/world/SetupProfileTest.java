@@ -30,6 +30,27 @@ import org.junit.jupiter.api.Test;
 class SetupProfileTest {
 
     /** Four teams is the one number a builder knows; everything else follows from it. */
+    /**
+     * A lobby has no teams and, for now, one place: where players land. Everything else it wants is
+     * built in the world, and asking a builder to mark places nothing reads is worse than asking
+     * for nothing.
+     */
+    @Test
+    void a_lobby_has_no_teams_and_one_place() {
+        assertFalse(SetupProfile.hasTeams("lobby"));
+        assertTrue(SetupProfile.hasTeams("bedwars"));
+        assertTrue(SetupProfile.isKnown("lobby"));
+
+        assertEquals(List.of("spawn"), SetupProfile.required("lobby", List.of()));
+        assertEquals("spawn", SetupProfile.resolve("lobby", "map", "spawn", Set.of()));
+        // Not a block: it is where a player stands, so it comes from the builder's feet.
+        assertFalse(SetupProfile.isBlock("spawn"));
+        assertEquals(
+                List.of("spawn"), SetupProfile.missing("lobby", List.of(), Set.of()), "nothing marked yet");
+        assertEquals(
+                List.of(), SetupProfile.missing("lobby", List.of(), Set.of("spawn")), "and then it is done");
+    }
+
     @Test
     void teams_are_colours_because_that_is_what_a_player_sees() {
         assertEquals(List.of("red", "blue", "green", "yellow"), SetupProfile.defaultColours(4));

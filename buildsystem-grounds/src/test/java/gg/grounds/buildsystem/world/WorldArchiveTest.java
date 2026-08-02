@@ -99,6 +99,36 @@ class WorldArchiveTest {
         assertFalse(entries.contains("uid.dat"), entries.toString());
     }
 
+    /**
+     * Paper 26.1+ keeps every world under `<level-name>/dimensions/minecraft`, so the main world's
+     * folder physically contains the whole build server. Packing it without this exclusion put
+     * every other map into one map's bundle.
+     */
+    @Test
+    void leaves_the_other_worlds_out_of_the_main_world() throws IOException {
+        Path world = world(
+                "region/r.0.0.mca",
+                "level.dat",
+                "dimensions/minecraft/bedwars_crater/region/r.0.0.mca",
+                "dimensions/minecraft/lobby/level.dat");
+
+        List<String> entries = entriesOf(WorldArchive.pack(world, tmp.resolve("a.tar.zst")).file());
+
+        assertTrue(entries.contains("region/r.0.0.mca"));
+        assertFalse(
+                entries.stream().anyMatch(entry -> entry.startsWith("dimensions/")), entries.toString());
+    }
+
+    /** Only as a direct child: a map that has its own `dimensions` folder deeper down keeps it. */
+    @Test
+    void keeps_a_nested_directory_that_merely_shares_the_name() throws IOException {
+        Path world = world("region/r.0.0.mca", "data/dimensions/notes.txt");
+
+        List<String> entries = entriesOf(WorldArchive.pack(world, tmp.resolve("a.tar.zst")).file());
+
+        assertTrue(entries.contains("data/dimensions/notes.txt"), entries.toString());
+    }
+
     private Path world(String... files) throws IOException {
         Path root = Files.createDirectories(tmp.resolve("world-" + files.length));
         for (String file : files) {

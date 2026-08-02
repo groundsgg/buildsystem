@@ -61,6 +61,17 @@ public final class WorldArchive {
     private static final Set<String> EXCLUDED =
             Set.of("playerdata", "stats", "advancements", "session.lock", "uid.dat");
 
+    /**
+     * Since Paper 26.1 every world is a dimension under {@code <level-name>/dimensions/minecraft},
+     * so the main world's folder physically contains every other world on the server. Packing it
+     * without this exclusion puts the whole build server into one map's bundle — BuildSystem
+     * excludes the same directory when it zips a world, for the same reason.
+     *
+     * <p>Only as a direct child: a dimension world has no such folder, and a map that happens to
+     * contain a directory called `dimensions` deeper down keeps it.
+     */
+    private static final String NESTED_WORLDS = "dimensions";
+
     private WorldArchive() {}
 
     /** What packing produced: where it is, what it hashes to, and how big it turned out. */
@@ -113,8 +124,12 @@ public final class WorldArchive {
         Files.walkFileTree(worldFolder, new SimpleFileVisitor<>() {
             @Override
             public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
-                boolean excluded = !dir.equals(worldFolder)
-                        && EXCLUDED.contains(dir.getFileName().toString());
+                if (dir.equals(worldFolder)) {
+                    return FileVisitResult.CONTINUE;
+                }
+                String name = dir.getFileName().toString();
+                boolean excluded = EXCLUDED.contains(name)
+                        || (name.equals(NESTED_WORLDS) && worldFolder.equals(dir.getParent()));
                 return excluded ? FileVisitResult.SKIP_SUBTREE : FileVisitResult.CONTINUE;
             }
 

@@ -41,14 +41,13 @@ class SetupProfileTest {
     void expands_every_requirement_from_the_team_count() {
         List<String> required = SetupProfile.required("bedwars", SetupProfile.defaultColours(4));
 
-        // 4 shared + 4 teams × 6 places.
-        assertEquals(28, required.size());
+        // 1 shared (gold.1) + 4 teams × 5 places.
+        assertEquals(21, required.size());
         assertTrue(required.contains("red.spawn"));
-        assertTrue(required.contains("yellow.upgrade"));
-        assertTrue(required.contains("lobby"));
-        assertTrue(required.contains("diamond.1"));
+        assertTrue(required.contains("yellow.iron.1"));
+        assertTrue(required.contains("gold.1"));
         // Two teams is two teams: nothing lingers from a bigger map.
-        assertEquals(16, SetupProfile.required("bedwars", SetupProfile.defaultColours(2)).size());
+        assertEquals(11, SetupProfile.required("bedwars", SetupProfile.defaultColours(2)).size());
     }
 
     /** Teams come as blocks so a builder can finish one base before walking to the next. */
@@ -56,20 +55,20 @@ class SetupProfileTest {
     void lists_requirements_in_walking_order() {
         List<String> required = SetupProfile.required("bedwars", SetupProfile.defaultColours(2));
 
-        assertEquals("lobby", required.get(0));
+        assertEquals("gold.1", required.get(0));
         assertEquals(
-                List.of("red.spawn", "red.bed", "red.iron", "red.gold", "red.shop", "red.upgrade"),
-                required.subList(4, 10));
+                List.of("red.spawn", "red.bed", "red.shop", "red.copper.1", "red.iron.1"),
+                required.subList(1, 6));
     }
 
     @Test
     void reports_what_is_left_grouped_by_team() {
-        Set<String> marked = Set.of("lobby", "spectator", "diamond.1", "emerald.1", "red.spawn", "red.bed");
+        Set<String> marked = Set.of("gold.1", "red.spawn", "red.bed");
 
         var missing = SetupProfile.missingByGroup("bedwars", SetupProfile.defaultColours(2), marked);
 
-        assertEquals(List.of("iron", "gold", "shop", "upgrade"), missing.get("red"));
-        assertEquals(6, missing.get("blue").size());
+        assertEquals(List.of("shop", "copper.1", "iron.1"), missing.get("red"));
+        assertEquals(5, missing.get("blue").size());
         assertNull(missing.get("map"), "everything shared is marked");
     }
 
@@ -77,12 +76,39 @@ class SetupProfileTest {
      * A typo must not become a point nothing reads — that is the failure mode that leaves a map
      * looking finished and behaving broken.
      */
+    /**
+     * `/ms diamond` used to write a point called `diamond` while the checklist asked for
+     * `diamond.1`, so a marked generator stayed missing forever. It now takes the next free
+     * number — maps have several, and a builder should click rather than count.
+     */
+    @Test
+    void a_numbered_generator_takes_the_next_free_slot() {
+        assertEquals("gold.1", SetupProfile.resolve("bedwars", "map", "gold", Set.of()));
+        assertEquals("gold.2", SetupProfile.resolve("bedwars", "map", "gold", Set.of("gold.1")));
+        assertEquals("gold.3", SetupProfile.resolve("bedwars", "map", "gold", Set.of("gold.1", "gold.2")));
+    }
+
+    /** Bases have several spawns too, so the numbering has to work per team as well. */
+    @Test
+    void a_team_can_have_several_of_the_same_spawn() {
+        assertEquals("red.copper.1", SetupProfile.resolve("bedwars", "red", "copper", Set.of()));
+        assertEquals(
+                "red.copper.2", SetupProfile.resolve("bedwars", "red", "copper", Set.of("red.copper.1")));
+        assertEquals("red.iron.1", SetupProfile.resolve("bedwars", "red", "iron", Set.of("red.copper.1")));
+        // The one-of-a-kind places keep their plain name.
+        assertEquals("red.bed", SetupProfile.resolve("bedwars", "red", "bed", Set.of()));
+    }
+
     @Test
     void refuses_a_thing_the_gamemode_does_not_have() {
-        assertEquals("red.spawn", SetupProfile.resolve("bedwars", "red", "spawn"));
-        assertEquals("green.bed", SetupProfile.resolve("bedwars", "GREEN", "BED"));
-        assertEquals("lobby", SetupProfile.resolve("bedwars", "map", "lobby"));
-        assertNull(SetupProfile.resolve("bedwars", "red", "spwan"));
-        assertNull(SetupProfile.resolve("bedwars", "map", "nonsense"));
+        assertEquals("red.spawn", SetupProfile.resolve("bedwars", "red", "spawn", Set.of()));
+        assertEquals("green.bed", SetupProfile.resolve("bedwars", "GREEN", "BED", Set.of()));
+        assertNull(SetupProfile.resolve("bedwars", "red", "spwan", Set.of()));
+        assertNull(SetupProfile.resolve("bedwars", "map", "nonsense", Set.of()));
+        // This game has no diamonds, no emeralds and no upgrade villager — asking for them would
+        // send a builder to mark places nothing will ever read.
+        assertNull(SetupProfile.resolve("bedwars", "map", "diamond", Set.of()));
+        assertNull(SetupProfile.resolve("bedwars", "red", "upgrade", Set.of()));
+        assertNull(SetupProfile.resolve("bedwars", "red", "diamond", Set.of()), "not in this game");
     }
 }

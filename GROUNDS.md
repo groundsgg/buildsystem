@@ -67,7 +67,7 @@ from the portal. Builders never move a pin — that separation is enforced by th
 A gamemode's requirements come from one number the builder actually knows:
 
 ```
-/map setup bedwars 4                     # four teams: red, blue, green, yellow
+/map setup bedwars 4                     # four teams: red, blue, green, yellow (says which)
 /map setup bedwars green pink            # or name the colours yourself
 /ms red spawn                            # stand there, name it
 /ms red bed                              # then right-click the bed
@@ -92,9 +92,15 @@ rather than quietly becoming a point nothing will ever read, which is the failur
 a map looking finished and behaving broken. Every reply names the next command to type, since
 typing it is the work.
 
-Adding a gamemode is a line in `SetupProfile`, not a new code path. BedWars asks for `spawn`, `bed`,
-`iron`, `gold`, `shop` and `upgrade` per colour, plus `lobby`, `spectator`, `diamond.1` and
-`emerald.1` once.
+Adding a gamemode is a line in `SetupProfile`, not a new code path. BedWars asks for `spawn`, `bed`, `shop`, `copper` and `iron` per colour, plus `gold` in the middle.
+
+**Those names are read off `game-bedwars`, not invented here.** That game's currencies are copper,
+iron and gold — ported from the 2018 server — and it has no diamonds, no emeralds and no upgrade
+villager. Asking a builder to mark places nothing will ever read is worse than asking for nothing.
+
+`copper`, `iron` and `gold` are **numbered**: a base has more than one spawn and the middle has
+several gold. `/ms red copper` marks `red.copper.1`, then `red.copper.2`, so a builder clicks rather
+than counts.
 
 `grounds/setup.json` travels in the bundle like the points do, so a gamemode loading a map is told
 its shape by the map rather than by configuration somewhere else.

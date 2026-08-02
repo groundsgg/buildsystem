@@ -4,7 +4,10 @@ on: [ push, pull_request ]
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    # Blacksmith, not GitHub's runners: the whole org builds here. Two vCPU is the house size
+    # for Gradle jobs — Blacksmith bills per full minute and linearly in vCPU, so a wider
+    # runner only pays off if it actually shortens wall-clock.
+    runs-on: blacksmith-2vcpu-ubuntu-2404-arm
     strategy:
       matrix:
         java: [ 25 ]

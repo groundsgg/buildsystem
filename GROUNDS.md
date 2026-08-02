@@ -160,6 +160,15 @@ be indistinguishable from a real edit.
 Player state (`playerdata`, `stats`, `advancements`) and `session.lock` / `uid.dat` are left out. A
 map is a place, not the people who visited it while it was built.
 
+**Where the worlds are.** Since Paper 26.1 every world is a dimension under
+`<level-name>/dimensions/minecraft/<name>`; BuildSystem resolves a loaded world through Bukkit and
+an unloaded one from that layout, falling back to the flat `<container>/<name>` for anything not yet
+migrated. Nothing is moved after loading — a world stays where it is.
+
+That layout has a sharp edge: the **main** world's folder physically contains every other world.
+Packing it without excluding a direct `dimensions` child would put the whole build server into one
+map's bundle, which is why upstream excludes the same directory when it zips a world.
+
 ## Setting it up
 
 **`GROUNDS_MAPS_CLIENT_SECRET` is optional.** It gives the build server an identity of its own, for

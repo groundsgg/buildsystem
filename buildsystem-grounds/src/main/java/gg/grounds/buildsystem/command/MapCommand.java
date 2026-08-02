@@ -27,7 +27,7 @@ import gg.grounds.buildsystem.registry.RegistryClient;
 import gg.grounds.buildsystem.registry.PlayerLogins;
 import gg.grounds.buildsystem.registry.RegistryException;
 import gg.grounds.buildsystem.registry.TokenSource;
-import gg.grounds.buildsystem.world.MapLink;
+import gg.grounds.buildsystem.world.MapLinks;
 import gg.grounds.buildsystem.world.WorldArchive;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -67,15 +67,34 @@ public final class MapCommand implements CommandExecutor, TabCompleter {
     private final RegistryClient registry;
     private final DeviceFlow deviceFlow;
     private final PlayerLogins logins;
+    private final MapLinks links;
     /** Who has a sign-in link outstanding, so a second one cannot orphan the first. */
     private final java.util.Set<java.util.UUID> pendingLogins = java.util.concurrent.ConcurrentHashMap.newKeySet();
 
     public MapCommand(
-            JavaPlugin plugin, RegistryClient registry, DeviceFlow deviceFlow, PlayerLogins logins) {
+            JavaPlugin plugin,
+            RegistryClient registry,
+            DeviceFlow deviceFlow,
+            PlayerLogins logins,
+            MapLinks links) {
         this.plugin = plugin;
         this.registry = registry;
         this.deviceFlow = deviceFlow;
         this.logins = logins;
+        this.links = links;
+    }
+
+    /**
+     * Writing the link must not undo a push that already succeeded: the version exists in the
+     * registry either way, and a failed write is local bookkeeping the builder can repair by
+     * running the command again.
+     */
+    private void linkQuietly(Player player, BuildWorld world, String address, @Nullable Integer version) {
+        try {
+            links.link(world.getUniqueId(), world.getName(), address, version);
+        } catch (java.io.IOException e) {
+            error(player, "Saved to the registry, but this server could not remember the link: " + e.getMessage());
+        }
     }
 
     /** Who this command acts as: the signed-in builder, else the build server itself. */
@@ -112,7 +131,7 @@ public final class MapCommand implements CommandExecutor, TabCompleter {
         String sub = args.length == 0 ? "status" : args[0].toLowerCase(Locale.ROOT);
         switch (sub) {
             case "status" -> status(player, world);
-            case "push" -> push(player, world, join(args, 1));
+            case "push" -> push(player, world, args);
             case "fork" -> fork(player, world, args.length > 1 ? args[1] : null);
             case "versions" -> versions(player, world);
             case "link" -> link(player, world, args.length > 1 ? args[1] : null);
@@ -130,12 +149,12 @@ public final class MapCommand implements CommandExecutor, TabCompleter {
                 signedIn == null
                         ? "Not signed in — pushes run as the build server. /map login changes that."
                         : "Signed in as " + signedIn + ".");
-        String address = MapLink.addressOf(world);
+        String address = links.addressOf(world.getUniqueId());
         if (address == null) {
             info(player, "This world is not linked to a map yet. Use /map link <namespace/name>.");
             return;
         }
-        Integer base = MapLink.baseVersionOf(world);
+        Integer base = links.baseVersionOf(world.getUniqueId());
         info(
                 player,
                 "This world is "
@@ -190,7 +209,7 @@ public final class MapCommand implements CommandExecutor, TabCompleter {
             error(player, "A map address is <namespace>/<name>, e.g. bedwars/4x4-baumhaus.");
             return;
         }
-        String existing = MapLink.addressOf(world);
+        String existing = links.addressOf(world.getUniqueId());
         if (existing != null) {
             // Relinking silently would make the next push land on a different map with no
             // trace of why. Deleting the world data is the operator's call, not a side effect.
@@ -205,16 +224,22 @@ public final class MapCommand implements CommandExecutor, TabCompleter {
                 registry.createMap(auth, address, world.getName(), "ARENA", false);
             }
             onMainThread(() -> {
-                MapLink.link(world, address, null);
+                linkQuietly(player, world, address, null);
                 ok(player, "Linked to " + address + (exists ? "." : " (new map)."));
             });
         });
     }
 
-    private void push(Player player, BuildWorld world, @Nullable String note) {
-        String address = MapLink.addressOf(world);
+    private void push(Player player, BuildWorld world, String[] args) {
+        // `/map push bedwars/crater` is what a builder types for a world that has no map yet, so
+        // it means what it looks like: link it, then push. Once a world is linked the same token
+        // is a note, because repeating the address every time would be noise.
+        String linked = links.addressOf(world.getUniqueId());
+        boolean linkFirst = linked == null && args.length > 1 && args[1].contains("/");
+        String address = linked != null ? linked : (linkFirst ? args[1] : null);
+        String note = join(args, linkFirst ? 2 : 1);
         if (address == null) {
-            error(player, "Link this world to a map first: /map link <namespace/name>.");
+            error(player, "Which map? /map push <namespace/name> — or /map link it once.");
             return;
         }
         World bukkitWorld = world.getWorld().orElse(null);
@@ -231,20 +256,27 @@ public final class MapCommand implements CommandExecutor, TabCompleter {
         bukkitWorld.setAutoSave(false);
 
         Path folder = bukkitWorld.getWorldFolder().toPath();
-        Integer parent = MapLink.baseVersionOf(world);
+        Integer parent = links.baseVersionOf(world.getUniqueId());
         TokenSource auth = authFor(player);
         info(player, "Packing " + address + "…");
 
         offMainThread(player, () -> {
             Path archive = Files.createTempFile("grounds-map-", ".tar.zst");
             try {
+                if (linkFirst) {
+                    List<MapSummary> maps = registry.listMaps(auth);
+                    if (maps.stream().noneMatch(map -> map.address().equals(address))) {
+                        registry.createMap(auth, address, world.getName(), "ARENA", false);
+                        info(player, "Created " + address + ".");
+                    }
+                }
                 WorldArchive.Archive packed = WorldArchive.pack(folder, archive);
                 onMainThread(() -> bukkitWorld.setAutoSave(autoSave));
                 info(player, "Uploading " + mib(packed.sizeBytes()) + " to the registry…");
                 MapVersion published =
                         registry.push(auth, address, packed.file(), packed.sha256(), packed.sizeBytes(), parent, note);
                 onMainThread(() -> {
-                    MapLink.link(world, address, published.version());
+                    linkQuietly(player, world, address, published.version());
                     ok(
                             player,
                             "Published "
@@ -266,7 +298,7 @@ public final class MapCommand implements CommandExecutor, TabCompleter {
     }
 
     private void fork(Player player, BuildWorld world, @Nullable String target) {
-        String address = MapLink.addressOf(world);
+        String address = links.addressOf(world.getUniqueId());
         if (address == null) {
             error(player, "This world is not a map, so there is nothing to fork.");
             return;
@@ -275,7 +307,7 @@ public final class MapCommand implements CommandExecutor, TabCompleter {
             error(player, "Fork into which address? /map fork bedwars/4x4-baumhaus-winter");
             return;
         }
-        Integer base = MapLink.baseVersionOf(world);
+        Integer base = links.baseVersionOf(world.getUniqueId());
         TokenSource auth = authFor(player);
         offMainThread(player, () -> {
             MapSummary forked = registry.fork(auth, address, target, base, null);
@@ -290,7 +322,7 @@ public final class MapCommand implements CommandExecutor, TabCompleter {
     }
 
     private void versions(Player player, BuildWorld world) {
-        String address = MapLink.addressOf(world);
+        String address = links.addressOf(world.getUniqueId());
         if (address == null) {
             error(player, "This world is not linked to a map.");
             return;

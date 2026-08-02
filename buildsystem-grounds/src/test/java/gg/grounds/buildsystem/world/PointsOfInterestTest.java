@@ -21,6 +21,7 @@ package gg.grounds.buildsystem.world;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
@@ -74,6 +75,39 @@ class PointsOfInterestTest {
 
         assertTrue(PointsOfInterest.read(world).isEmpty());
         assertNull(PointsOfInterest.get(world, "anything"));
+    }
+
+    /**
+     * Editing this file by hand is a supported way to work, and a typo in it must not cost the
+     * points that are already in it: an unparseable file reads as empty, so writing over it would
+     * replace every point with whichever one is being set.
+     */
+    @Test
+    void refuses_to_overwrite_a_file_it_cannot_read() throws IOException {
+        Files.createDirectories(world.resolve("grounds"));
+        Path file = world.resolve("grounds").resolve("pois.json");
+        Files.writeString(file, "{ \"pois\": { oops");
+
+        IOException refused = assertThrows(
+                IOException.class,
+                () -> PointsOfInterest.write(world, Map.of("a.b", new PointsOfInterest.Poi(0, 0, 0, 0, 0))));
+
+        assertTrue(refused.getMessage().contains("not valid JSON"), refused.getMessage());
+        // Untouched, so a builder can go and fix their edit.
+        assertEquals("{ \"pois\": { oops", Files.readString(file));
+    }
+
+    @Test
+    void a_hand_written_file_is_read_as_it_stands() throws IOException {
+        Files.createDirectories(world.resolve("grounds"));
+        Files.writeString(
+                world.resolve("grounds").resolve("pois.json"),
+                "{\"format\":1,\"pois\":{\"red.spawn\":{\"x\":1.5,\"y\":64.0,\"z\":2.5,\"yaw\":90.0,\"pitch\":0.0}}}");
+
+        PointsOfInterest.Poi read = PointsOfInterest.get(world, "red.spawn");
+
+        assertEquals(1.5, read.x());
+        assertEquals(90.0f, read.yaw());
     }
 
     @Test

@@ -127,6 +127,29 @@ live. Removing a point changes the next push, never a published version.
 The file is written beside itself and moved into place: half a file here is a map with no spawns,
 and nobody would find out until a server loaded it.
 
+### Editing it by hand
+
+`grounds/pois.json` is an ordinary file on the build server, and editing it is a supported way to
+work — the plugin reads it fresh on every command, so a change is live at once, and `/map push`
+packs the whole world folder including it.
+
+```json
+{
+  "format": 1,
+  "pois": {
+    "red.spawn":    { "x": 1.5, "y": 64.0, "z": 2.5, "yaw": 90.0, "pitch": 0.0 },
+    "red.copper.1": { "x": 4.5, "y": 64.0, "z": 2.5, "yaw": 0.0,  "pitch": 0.0 }
+  }
+}
+```
+
+Names have to be the ones the profile asks for — `/map setup` lists them — or the checklist will
+keep reporting them missing.
+
+**A broken edit is refused rather than absorbed.** An unparseable file reads as empty, so the next
+`/ms` would replace every point with the one being set; instead the write fails and says to fix or
+delete the file. Nothing is lost while you sort out the typo.
+
 ### Bundles are reproducible
 
 `WorldArchive` writes a `.tar.zst` with sorted entries and fixed mode, mtime, owner and group, so an

@@ -43,13 +43,26 @@ public final class SetupProfile {
 
     private SetupProfile() {}
 
-    /** What every team needs, in the order a builder would naturally walk it. */
-    private static final Map<String, List<String>> PER_TEAM = Map.of(
-            "bedwars", List.of("spawn", "bed", "iron", "gold", "shop", "upgrade"));
+    /**
+     * What every team needs, in the order a builder would naturally walk it.
+     *
+     * <p>Read off game-bedwars rather than guessed. That game has no diamonds and no emeralds: its
+     * currencies are copper, iron and gold, ported from the 2018 server, and copper and iron
+     * trickle inside a team's base.
+     */
+    private static final Map<String, List<String>> PER_TEAM =
+            Map.of("bedwars", List.of("spawn", "bed", "shop", "copper", "iron"));
 
-    /** What the map needs once, regardless of team count. */
-    private static final Map<String, List<String>> GLOBAL = Map.of(
-            "bedwars", List.of("lobby", "spectator", "diamond.1", "emerald.1"));
+    /** What the map needs once, regardless of team count. Gold sits in the middle, contested. */
+    private static final Map<String, List<String>> GLOBAL = Map.of("bedwars", List.of("gold"));
+
+    /**
+     * Things a map has several of, so marking one takes the next free number.
+     *
+     * <p>The reference arena places two gold generators, "far enough apart that one team cannot
+     * stand on both" — one of anything is the exception, not the rule.
+     */
+    private static final Set<String> NUMBERED = Set.of("copper", "iron", "gold");
 
     /**
      * Minecraft's dye colours, in the order a four-team map conventionally uses them.
@@ -98,10 +111,14 @@ public final class SetupProfile {
      */
     public static List<String> required(String gamemode, List<String> teams) {
         String mode = gamemode.toLowerCase(Locale.ROOT);
-        List<String> required = new ArrayList<>(GLOBAL.getOrDefault(mode, List.of()));
+        List<String> required = new ArrayList<>();
+        for (String point : GLOBAL.getOrDefault(mode, List.of())) {
+            // One is required; a builder places as many more as the map wants.
+            required.add(numberedFirst(point));
+        }
         for (String team : teams) {
             for (String point : PER_TEAM.getOrDefault(mode, List.of())) {
-                required.add(team + "." + point);
+                required.add(team + "." + numberedFirst(point));
             }
         }
         return required;
@@ -138,18 +155,31 @@ public final class SetupProfile {
      * The full point name for {@code /ms team1 spawn}. Returns null when the thing is not part of
      * this gamemode — a typo like `spwan` would otherwise become a point nothing ever reads.
      */
-    public static @Nullable String resolve(String gamemode, String group, String thing) {
+    public static @Nullable String resolve(String gamemode, String group, String thing, Set<String> marked) {
         String mode = gamemode.toLowerCase(Locale.ROOT);
         String point = thing.toLowerCase(Locale.ROOT);
         if (group.equalsIgnoreCase("map")) {
-            return GLOBAL.getOrDefault(mode, List.of()).stream()
-                            .anyMatch(known -> known.equals(point) || known.startsWith(point + "."))
-                    ? point
-                    : null;
+            List<String> globals = GLOBAL.getOrDefault(mode, List.of());
+            // Numbering is checked first: `gold` is in the list AND numbered, and returning the
+            // plain name here is exactly the bug that left a marked generator missing forever.
+            if (NUMBERED.contains(point)) {
+                return nextFree(point, marked);
+            }
+            if (globals.contains(point)) {
+                return point;
+            }
+            // A numbered family: a map has several gold spawns. `/ms gold` takes the next free
+            // number, so a builder walks the map clicking rather than counting — and, critically,
+            // the point it writes is the one the checklist asks for. Writing `gold` for a
+            // requirement named `gold.1` left it missing forever, which is how this was found.
+            return null;
         }
-        return PER_TEAM.getOrDefault(mode, List.of()).contains(point)
-                ? group.toLowerCase(Locale.ROOT) + "." + point
-                : null;
+        if (!PER_TEAM.getOrDefault(mode, List.of()).contains(point)) {
+            return null;
+        }
+        String team = group.toLowerCase(Locale.ROOT);
+        // nextFree already returns the full name, so the team must not be prefixed twice.
+        return NUMBERED.contains(point) ? nextFree(team + "." + point, marked) : team + "." + point;
     }
 
     /**
@@ -163,13 +193,26 @@ public final class SetupProfile {
      * <p>The rest — spawns, the waiting lobby, the spectator point — are exactly a player's
      * position and facing, so they are taken from the player.
      */
-    private static final Set<String> BLOCKS =
-            Set.of("bed", "iron", "gold", "shop", "upgrade", "diamond", "emerald");
+    private static final Set<String> BLOCKS = Set.of("bed", "shop", "copper", "iron", "gold");
+
+    private static String numberedFirst(String thing) {
+        return NUMBERED.contains(thing) ? thing + ".1" : thing;
+    }
 
     public static boolean isBlock(String thing) {
         String point = thing.toLowerCase(Locale.ROOT);
         int dot = point.indexOf('.');
         return BLOCKS.contains(dot < 0 ? point : point.substring(0, dot));
+    }
+
+    /** `copper` becomes `copper.1`, then `copper.2` — the builder clicks rather than counts. */
+    private static String nextFree(String base, Set<String> marked) {
+        for (int index = 1; index <= 64; index++) {
+            if (!marked.contains(base + "." + index)) {
+                return base + "." + index;
+            }
+        }
+        return base + ".64";
     }
 
     /** What a builder may write after a team, for the "unknown thing" reply and tab completion. */

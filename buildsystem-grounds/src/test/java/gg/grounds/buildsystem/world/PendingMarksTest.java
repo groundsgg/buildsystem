@@ -71,10 +71,8 @@ class PendingMarksTest {
     @Test
     void the_profile_knows_which_things_are_blocks() {
         assertTrue(SetupProfile.isBlock("bed"));
-        assertTrue(SetupProfile.isBlock("iron"));
-        assertTrue(SetupProfile.isBlock("diamond.1"));
+        assertTrue(SetupProfile.isBlock("copper"));
+        assertTrue(SetupProfile.isBlock("gold.2"), "a numbered spawn is still a block");
         assertFalse(SetupProfile.isBlock("spawn"));
-        assertFalse(SetupProfile.isBlock("lobby"));
-        assertFalse(SetupProfile.isBlock("spectator"));
     }
 }

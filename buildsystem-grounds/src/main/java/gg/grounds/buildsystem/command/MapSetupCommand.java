@@ -95,7 +95,9 @@ public final class MapSetupCommand implements CommandExecutor, TabCompleter {
         // a builder type a group name for them is tax on the command they type most.
         String group = args.length >= 2 ? args[0].toLowerCase(Locale.ROOT) : "map";
         String thing = (args.length >= 2 ? args[1] : args[0]).toLowerCase(Locale.ROOT);
-        String point = SetupProfile.resolve(setup.gamemode(), group, thing);
+        // The already-marked points decide which number a `/ms diamond` gets.
+        Map<String, PointsOfInterest.Poi> existing = PointsOfInterest.read(folder);
+        String point = SetupProfile.resolve(setup.gamemode(), group, thing, existing.keySet());
         if (point == null) {
             error(
                     player,
@@ -121,7 +123,7 @@ public final class MapSetupCommand implements CommandExecutor, TabCompleter {
         }
 
         Location at = player.getLocation();
-        Map<String, PointsOfInterest.Poi> pois = PointsOfInterest.read(folder);
+        Map<String, PointsOfInterest.Poi> pois = existing;
         boolean replaced = pois.containsKey(point);
         pois.put(point, new PointsOfInterest.Poi(at.getX(), at.getY(), at.getZ(), at.getYaw(), at.getPitch()));
         try {

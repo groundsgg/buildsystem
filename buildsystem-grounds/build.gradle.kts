@@ -30,6 +30,9 @@ dependencies {
     implementation(libs.commons.compress)
     implementation(libs.zstd)
 
+    // The server API is compileOnly, so its Gson is absent at test runtime. The MockBukkit-matched
+    // version, matching buildsystem-core — see libs.versions.toml.
+    testImplementation(libs.papertest)
     testImplementation(platform(libs.junit.bom))
     testImplementation(libs.junit.jupiter)
     testRuntimeOnly(libs.junit.platform.launcher)

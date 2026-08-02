@@ -19,6 +19,7 @@
 package gg.grounds.buildsystem;
 
 import gg.grounds.buildsystem.command.MapCommand;
+import gg.grounds.buildsystem.command.MapSetupCommand;
 import gg.grounds.buildsystem.registry.DeviceFlow;
 import gg.grounds.buildsystem.registry.PlayerLogins;
 import gg.grounds.buildsystem.registry.RegistryClient;
@@ -64,6 +65,13 @@ public final class GroundsMapsPlugin extends JavaPlugin {
         Objects.requireNonNull(getCommand("map"), "the map command is declared in plugin.yml")
                 .setExecutor(command);
         Objects.requireNonNull(getCommand("map")).setTabCompleter(command);
+
+        // Its own command because `/ms team1 bed` is typed once per place per team, and
+        // `/map poi set team1.bed` is the same thing with more to mistype.
+        MapSetupCommand setup = new MapSetupCommand();
+        Objects.requireNonNull(getCommand("ms"), "the ms command is declared in plugin.yml")
+                .setExecutor(setup);
+        Objects.requireNonNull(getCommand("ms")).setTabCompleter(setup);
 
         getLogger().info("Map registry: " + require("registry.base-url"));
     }

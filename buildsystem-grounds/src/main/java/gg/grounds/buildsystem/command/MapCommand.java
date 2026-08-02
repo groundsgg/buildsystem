@@ -29,7 +29,9 @@ import gg.grounds.buildsystem.registry.RegistryException;
 import gg.grounds.buildsystem.registry.TokenSource;
 import gg.grounds.buildsystem.world.MapAddresses;
 import gg.grounds.buildsystem.world.MapLinks;
+import gg.grounds.buildsystem.world.MapSetup;
 import gg.grounds.buildsystem.world.PointsOfInterest;
+import gg.grounds.buildsystem.world.SetupProfile;
 import gg.grounds.buildsystem.world.WorldArchive;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -39,6 +41,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.event.ClickEvent;
 import net.kyori.adventure.text.format.NamedTextColor;
@@ -65,7 +68,7 @@ import org.jspecify.annotations.Nullable;
 public final class MapCommand implements CommandExecutor, TabCompleter {
 
     private static final List<String> SUBCOMMANDS =
-            List.of("push", "fork", "versions", "link", "status", "login", "logout", "poi");
+            List.of("push", "fork", "versions", "link", "status", "login", "logout", "poi", "setup");
 
     private final JavaPlugin plugin;
     private final RegistryClient registry;
@@ -157,6 +160,7 @@ public final class MapCommand implements CommandExecutor, TabCompleter {
             case "versions" -> versions(player, world);
             case "link" -> link(player, world, args.length > 1 ? args[1] : null);
             case "poi" -> poi(player, world, args);
+            case "setup" -> setup(player, world, args);
             default -> error(player, "Unknown: " + sub + ". Try /map push.");
         }
         return true;
@@ -232,6 +236,78 @@ public final class MapCommand implements CommandExecutor, TabCompleter {
      * <p>Points live in the world folder, so they travel in the bundle and a version's places are
      * fixed the moment it is published.
      */
+    /**
+     * What this map is for, and what is still missing.
+     *
+     * <p>{@code /map setup bedwars 4} is the one number a builder knows; every requirement is
+     * expanded from it. Called without arguments it answers the only question that matters while
+     * building — what is left — grouped by team, because a flat list of twenty names is something
+     * the builder then has to sort themselves.
+     */
+    private void setup(Player player, BuildWorld world, String[] args) {
+        World bukkitWorld = world.getWorld().orElse(null);
+        if (bukkitWorld == null) {
+            error(player, "The world is not loaded.");
+            return;
+        }
+        Path folder = bukkitWorld.getWorldFolder().toPath();
+
+        if (args.length > 1) {
+            String gamemode = args[1].toLowerCase(Locale.ROOT);
+            if (!SetupProfile.isKnown(gamemode)) {
+                error(player, "No setup for \"" + gamemode + "\". Known: " + String.join(", ", SetupProfile.gamemodes()));
+                return;
+            }
+            int teams = args.length > 2 ? parseTeams(args[2]) : -1;
+            if (teams < 1 || teams > 16) {
+                error(player, "How many teams? /map setup " + gamemode + " 4");
+                return;
+            }
+            try {
+                MapSetup.write(folder, new MapSetup.Setup(gamemode, teams));
+            } catch (IOException e) {
+                error(player, "Could not save the setup: " + e.getMessage());
+                return;
+            }
+            ok(player, "This map is " + gamemode + " for " + teams + " teams.");
+        }
+
+        MapSetup.Setup current = MapSetup.read(folder);
+        if (current == null) {
+            info(player, "Not set up yet. /map setup bedwars 4 says what this map is for.");
+            return;
+        }
+        reportProgress(player, folder, current);
+    }
+
+    private void reportProgress(Player player, Path folder, MapSetup.Setup setup) {
+        Set<String> marked = PointsOfInterest.read(folder).keySet();
+        Map<String, List<String>> missing =
+                SetupProfile.missingByGroup(setup.gamemode(), setup.teams(), marked);
+        int required = SetupProfile.required(setup.gamemode(), setup.teams()).size();
+        int done = required - SetupProfile.missing(setup.gamemode(), setup.teams(), marked).size();
+
+        if (missing.isEmpty()) {
+            ok(player, setup.gamemode() + " for " + setup.teams() + " teams: all " + required
+                    + " places marked. /map push publishes it.");
+            return;
+        }
+        info(player, setup.gamemode() + " for " + setup.teams() + " teams — " + done + " of "
+                + required + " marked. Still missing:");
+        missing.forEach((group, things) -> player.sendMessage(Component.text("  " + group + ": ", NamedTextColor.GRAY)
+                .append(Component.text(String.join(", ", things), NamedTextColor.RED))));
+        info(player, "Stand where one belongs and run /ms " + missing.keySet().iterator().next()
+                + " " + missing.values().iterator().next().get(0));
+    }
+
+    private static int parseTeams(String raw) {
+        try {
+            return Integer.parseInt(raw);
+        } catch (NumberFormatException e) {
+            return -1;
+        }
+    }
+
     private void poi(Player player, BuildWorld world, String[] args) {
         World bukkitWorld = world.getWorld().orElse(null);
         if (bukkitWorld == null) {

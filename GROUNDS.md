@@ -67,6 +67,9 @@ from the portal. Builders never move a pin — that separation is enforced by th
 A gamemode's requirements come from one number the builder actually knows:
 
 ```
+/map setup lobby                         # no teams — one place: spawn
+/ms spawn
+
 /map setup bedwars 4                     # four teams: red, blue, green, yellow (says which)
 /map setup bedwars green pink            # or name the colours yourself
 /ms red spawn                            # stand there, name it
@@ -90,6 +93,10 @@ times for four-team BedWars — and because it knows the profile. `/ms red spwan
 rather than quietly becoming a point nothing will ever read, which is the failure mode that leaves
 a map looking finished and behaving broken. Every reply names the next command to type, since
 typing it is the work.
+
+A **lobby** takes no team argument and asks for one place, `spawn` — where players land. Everything
+else a lobby wants is built in the world, and the countdown puts players into a match straight from
+it, so there is nothing else to mark yet.
 
 Adding a gamemode is a line in `SetupProfile`, not a new code path. BedWars asks for `spawn`, `bed`, `shop`, `copper` and `iron` per colour, plus `gold` in the middle.
 

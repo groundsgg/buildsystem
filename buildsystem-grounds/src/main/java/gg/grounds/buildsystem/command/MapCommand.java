@@ -261,8 +261,8 @@ public final class MapCommand implements CommandExecutor, TabCompleter {
             // Either a count — "4" picks the first four colours — or the colours themselves, for
             // a map whose bases are green and pink. Both end up as a list of colours, because a
             // player sees the red bed, never team one.
-            List<String> teams = teamsFrom(args);
-            if (teams.isEmpty()) {
+            List<String> teams = SetupProfile.hasTeams(gamemode) ? teamsFrom(args) : List.of();
+            if (SetupProfile.hasTeams(gamemode) && teams.isEmpty()) {
                 error(
                         player,
                         "How many teams? /map setup " + gamemode + " 4 — or name them: /map setup "
@@ -275,7 +275,12 @@ public final class MapCommand implements CommandExecutor, TabCompleter {
                 error(player, "Could not save the setup: " + e.getMessage());
                 return;
             }
-            ok(player, "This map is " + gamemode + " for " + teams.size() + " teams: " + String.join(", ", teams));
+            ok(
+                    player,
+                    teams.isEmpty()
+                            ? "This map is a " + gamemode + "."
+                            : "This map is " + gamemode + " for " + teams.size() + " teams: "
+                                    + String.join(", ", teams));
         }
 
         MapSetup.Setup current = MapSetup.read(folder);
@@ -294,12 +299,20 @@ public final class MapCommand implements CommandExecutor, TabCompleter {
         int done = required - SetupProfile.missing(setup.gamemode(), setup.teams(), marked).size();
 
         if (missing.isEmpty()) {
-            ok(player, setup.gamemode() + " for " + setup.teams().size() + " teams: all " + required
-                    + " places marked. /map push publishes it.");
+            ok(
+                    player,
+                    (setup.teams().isEmpty()
+                                    ? setup.gamemode()
+                                    : setup.gamemode() + " for " + setup.teams().size() + " teams")
+                            + ": all " + required + " places marked. /map push publishes it.");
             return;
         }
-        info(player, setup.gamemode() + " for " + setup.teams().size() + " teams — " + done + " of "
-                + required + " marked. Still missing:");
+        info(
+                player,
+                (setup.teams().isEmpty()
+                                ? setup.gamemode()
+                                : setup.gamemode() + " for " + setup.teams().size() + " teams")
+                        + " — " + done + " of " + required + " marked. Still missing:");
         missing.forEach((group, things) -> player.sendMessage(Component.text("  " + group + ": ", NamedTextColor.GRAY)
                 .append(Component.text(String.join(", ", things), NamedTextColor.RED))));
         info(player, "Stand where one belongs and run /ms " + missing.keySet().iterator().next()

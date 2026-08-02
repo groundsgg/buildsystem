@@ -50,11 +50,20 @@ public final class SetupProfile {
      * currencies are copper, iron and gold, ported from the 2018 server, and copper and iron
      * trickle inside a team's base.
      */
-    private static final Map<String, List<String>> PER_TEAM =
-            Map.of("bedwars", List.of("spawn", "bed", "shop", "copper", "iron"));
+    private static final Map<String, List<String>> PER_TEAM = Map.of(
+            "bedwars", List.of("spawn", "bed", "shop", "copper", "iron"),
+            // A lobby has no teams. Everything it needs is shared, which is why the team list is
+            // empty rather than absent: `hasTeams` reads it, and a gamemode missing from the map
+            // is a different answer from one that has none.
+            "lobby", List.of());
 
     /** What the map needs once, regardless of team count. Gold sits in the middle, contested. */
-    private static final Map<String, List<String>> GLOBAL = Map.of("bedwars", List.of("gold"));
+    private static final Map<String, List<String>> GLOBAL = Map.of(
+            "bedwars", List.of("gold"),
+            // Where players land. Everything else a lobby wants — portals, boards, shops — is
+            // either built in the world or comes later; asking for it now would ask a builder to
+            // mark places nothing reads.
+            "lobby", List.of("spawn"));
 
     /**
      * Things a map has several of, so marking one takes the next free number.
@@ -99,6 +108,11 @@ public final class SetupProfile {
 
     public static Set<String> gamemodes() {
         return PER_TEAM.keySet();
+    }
+
+    /** Whether this gamemode is played in teams. A lobby is not, so it takes no team argument. */
+    public static boolean hasTeams(String gamemode) {
+        return !PER_TEAM.getOrDefault(gamemode.toLowerCase(Locale.ROOT), List.of()).isEmpty();
     }
 
     public static boolean isKnown(String gamemode) {

@@ -27,8 +27,12 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.security.SecureRandom;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Base64;
 import org.jspecify.annotations.NullMarked;
 
 /**
@@ -65,6 +69,12 @@ public final class DeviceFlow {
             String deviceCode,
             String userCode,
             String verificationUri,
+            /**
+             * The PKCE secret this login is bound to. It never leaves the server and is sent only
+             * when redeeming the device code, which is what stops a leaked code being redeemed by
+             * somebody else.
+             */
+            String codeVerifier,
             Duration interval,
             Instant expiresAt) {}
 
@@ -80,7 +90,18 @@ public final class DeviceFlow {
     }
 
     public Pending begin() throws RegistryException {
-        JsonObject body = form(deviceUrl, "client_id=" + enc(clientId), "start a login");
+        // PKCE is not optional here: the grounds-cli client requires S256, and without a
+        // challenge Keycloak answers "Missing parameter: code_challenge_method" — which is also
+        // exactly the right requirement, since it binds this device code to this login attempt.
+        String verifier = newCodeVerifier();
+        JsonObject body = form(
+                deviceUrl,
+                "client_id="
+                        + enc(clientId)
+                        + "&code_challenge="
+                        + enc(challengeFor(verifier))
+                        + "&code_challenge_method=S256",
+                "start a login");
         // Prefer the complete URI: it carries the code, so the builder confirms rather than
         // types. Keycloak omits it in some configurations, hence the fallback.
         String verification =
@@ -93,6 +114,7 @@ public final class DeviceFlow {
                 body.get("device_code").getAsString(),
                 body.get("user_code").getAsString(),
                 verification,
+                verifier,
                 Duration.ofSeconds(interval),
                 Instant.now().plusSeconds(expiresIn));
     }
@@ -189,6 +211,38 @@ public final class DeviceFlow {
                 Thread.currentThread().interrupt();
             }
             throw new RegistryException("Could not " + what + ": " + e.getMessage(), e);
+        }
+    }
+
+    /** `error_description` if Keycloak sent one, else the code, else the status. */
+    private static String describeOAuthError(HttpResponse<String> response) {
+        try {
+            JsonObject body = JsonParser.parseString(response.body()).getAsJsonObject();
+            if (body.has("error_description")) {
+                return body.get("error_description").getAsString();
+            }
+            if (body.has("error")) {
+                return body.get("error").getAsString();
+            }
+        } catch (RuntimeException e) {
+            // Not an OAuth error object. The status code is still better than nothing.
+        }
+        return "HTTP " + response.statusCode();
+    }
+
+    private static String newCodeVerifier() {
+        byte[] random = new byte[48];
+        new SecureRandom().nextBytes(random);
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(random);
+    }
+
+    private static String challengeFor(String verifier) {
+        try {
+            byte[] digest =
+                    MessageDigest.getInstance("SHA-256").digest(verifier.getBytes(StandardCharsets.US_ASCII));
+            return Base64.getUrlEncoder().withoutPadding().encodeToString(digest);
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 is required by the platform", e);
         }
     }
 

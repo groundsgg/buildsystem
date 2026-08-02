@@ -145,25 +145,20 @@ public final class RegistryClient {
             commit.addProperty("note", note);
         }
         MapVersion committed =
-                MapVersion.from(
-                        send(json(versionsPath(address), commit), "commit a version of " + address)
-                                .getAsJsonObject());
+                MapVersion.from(send(json(versionsPath(address), commit), "commit a version of " + address)
+                        .getAsJsonObject());
 
         JsonObject publish = new JsonObject();
         publish.addProperty("bundleSha256", sha256);
         publish.addProperty("sizeBytes", sizeBytes);
-        return MapVersion.from(
-                send(
-                                json(
-                                        versionsPath(address) + "/" + committed.version() + "/publish",
-                                        publish),
-                                "publish version " + committed.version())
-                        .getAsJsonObject());
+        return MapVersion.from(send(
+                        json(versionsPath(address) + "/" + committed.version() + "/publish", publish),
+                        "publish version " + committed.version())
+                .getAsJsonObject());
     }
 
     /** A new map from an existing version. Copies no bytes; the fork is usable immediately. */
-    public MapSummary fork(
-            String source, String target, @Nullable Integer fromVersion, @Nullable String displayName)
+    public MapSummary fork(String source, String target, @Nullable Integer fromVersion, @Nullable String displayName)
             throws RegistryException {
         JsonObject request = new JsonObject();
         request.addProperty("target", target);
@@ -183,16 +178,14 @@ public final class RegistryClient {
         try {
             // No Authorization header and no content type: the presigned URL signs `host` only,
             // so anything else either travels unsigned or breaks the signature outright.
-            HttpResponse<Void> response =
-                    http.send(
-                            HttpRequest.newBuilder(URI.create(presignedUrl))
-                                    .timeout(TIMEOUT)
-                                    .PUT(HttpRequest.BodyPublishers.ofFile(archive))
-                                    .build(),
-                            HttpResponse.BodyHandlers.discarding());
+            HttpResponse<Void> response = http.send(
+                    HttpRequest.newBuilder(URI.create(presignedUrl))
+                            .timeout(TIMEOUT)
+                            .PUT(HttpRequest.BodyPublishers.ofFile(archive))
+                            .build(),
+                    HttpResponse.BodyHandlers.discarding());
             if (response.statusCode() / 100 != 2) {
-                throw new RegistryException(
-                        "the upload was refused with HTTP " + response.statusCode());
+                throw new RegistryException("the upload was refused with HTTP " + response.statusCode());
             }
         } catch (IOException | InterruptedException e) {
             if (e instanceof InterruptedException) {
@@ -256,22 +249,20 @@ public final class RegistryClient {
         if (token != null && Instant.now().isBefore(tokenExpiry.minus(EXPIRY_MARGIN))) {
             return token;
         }
-        String form =
-                "grant_type=client_credentials"
-                        + "&client_id="
-                        + URLEncoder.encode(clientId, StandardCharsets.UTF_8)
-                        + "&client_secret="
-                        + URLEncoder.encode(clientSecret, StandardCharsets.UTF_8);
+        String form = "grant_type=client_credentials"
+                + "&client_id="
+                + URLEncoder.encode(clientId, StandardCharsets.UTF_8)
+                + "&client_secret="
+                + URLEncoder.encode(clientSecret, StandardCharsets.UTF_8);
         HttpResponse<String> response;
         try {
-            response =
-                    http.send(
-                            HttpRequest.newBuilder(URI.create(tokenUrl))
-                                    .timeout(Duration.ofSeconds(30))
-                                    .header("Content-Type", "application/x-www-form-urlencoded")
-                                    .POST(HttpRequest.BodyPublishers.ofString(form))
-                                    .build(),
-                            HttpResponse.BodyHandlers.ofString());
+            response = http.send(
+                    HttpRequest.newBuilder(URI.create(tokenUrl))
+                            .timeout(Duration.ofSeconds(30))
+                            .header("Content-Type", "application/x-www-form-urlencoded")
+                            .POST(HttpRequest.BodyPublishers.ofString(form))
+                            .build(),
+                    HttpResponse.BodyHandlers.ofString());
         } catch (IOException | InterruptedException e) {
             if (e instanceof InterruptedException) {
                 Thread.currentThread().interrupt();
@@ -281,9 +272,7 @@ public final class RegistryClient {
         if (response.statusCode() != 200) {
             // Never echo the body: a failed token response can carry the client secret back.
             throw new RegistryException(
-                    "Keycloak refused the build server's credentials (HTTP "
-                            + response.statusCode()
-                            + ")");
+                    "Keycloak refused the build server's credentials (HTTP " + response.statusCode() + ")");
         }
         JsonObject body = JsonParser.parseString(response.body()).getAsJsonObject();
         String fresh = body.get("access_token").getAsString();

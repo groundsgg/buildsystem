@@ -25,7 +25,11 @@ import org.jspecify.annotations.Nullable;
 /** One map in the registry, as much of it as the build server cares about. */
 @NullMarked
 public record MapSummary(
-        String address, String displayName, String kind, boolean stateful, @Nullable String forkedFrom) {
+        String address,
+        String displayName,
+        String kind,
+        boolean stateful,
+        @Nullable String forkedFrom) {
 
     static MapSummary from(JsonObject json) {
         return new MapSummary(
@@ -33,7 +37,9 @@ public record MapSummary(
                 json.get("displayName").getAsString(),
                 json.get("kind").getAsString(),
                 json.get("stateful").getAsBoolean(),
-                json.get("forkedFrom").isJsonNull() ? null : json.get("forkedFrom").getAsString());
+                json.get("forkedFrom").isJsonNull()
+                        ? null
+                        : json.get("forkedFrom").getAsString());
     }
 
     /** `bedwars/4x4-baumhaus` -> `bedwars`. Split at the LAST slash: `u/hendrik/treehouse`. */

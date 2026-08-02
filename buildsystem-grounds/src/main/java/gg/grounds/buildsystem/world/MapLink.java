@@ -44,8 +44,7 @@ public final class MapLink {
      * The version this world was created from, which becomes the {@code parentVersion} of the next
      * push. It is provenance, not a lock: two builders can both descend from version 3.
      */
-    public static final WorldDataKey<String> BASE_VERSION =
-            WorldDataKey.of("grounds-map-base-version", String.class);
+    public static final WorldDataKey<String> BASE_VERSION = WorldDataKey.of("grounds-map-base-version", String.class);
 
     private MapLink() {}
 

@@ -45,19 +45,14 @@ public final class GroundsMapsPlugin extends JavaPlugin {
             // Refusing to start is the safe direction. A build server that silently cannot
             // publish looks like a working build server until somebody finishes a map.
             getLogger()
-                    .severe(
-                            "GROUNDS_MAPS_CLIENT_SECRET is not set. The build server cannot talk to"
-                                    + " the map registry, so this plugin will not enable.");
+                    .severe("GROUNDS_MAPS_CLIENT_SECRET is not set. The build server cannot talk to"
+                            + " the map registry, so this plugin will not enable.");
             getServer().getPluginManager().disablePlugin(this);
             return;
         }
 
-        this.registry =
-                new RegistryClient(
-                        require("registry.base-url"),
-                        require("oidc.token-url"),
-                        require("oidc.client-id"),
-                        clientSecret);
+        this.registry = new RegistryClient(
+                require("registry.base-url"), require("oidc.token-url"), require("oidc.client-id"), clientSecret);
 
         MapCommand command = new MapCommand(this, registry);
         Objects.requireNonNull(getCommand("map"), "the map command is declared in plugin.yml")

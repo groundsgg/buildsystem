@@ -110,26 +110,23 @@ public final class WorldArchive {
 
     private static List<Path> collect(Path worldFolder) throws IOException {
         List<Path> files = new ArrayList<>();
-        Files.walkFileTree(
-                worldFolder,
-                new SimpleFileVisitor<>() {
-                    @Override
-                    public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
-                        boolean excluded =
-                                !dir.equals(worldFolder)
-                                        && EXCLUDED.contains(dir.getFileName().toString());
-                        return excluded ? FileVisitResult.SKIP_SUBTREE : FileVisitResult.CONTINUE;
-                    }
+        Files.walkFileTree(worldFolder, new SimpleFileVisitor<>() {
+            @Override
+            public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
+                boolean excluded = !dir.equals(worldFolder)
+                        && EXCLUDED.contains(dir.getFileName().toString());
+                return excluded ? FileVisitResult.SKIP_SUBTREE : FileVisitResult.CONTINUE;
+            }
 
-                    @Override
-                    public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
-                        if (attrs.isRegularFile()
-                                && !EXCLUDED.contains(file.getFileName().toString())) {
-                            files.add(file);
-                        }
-                        return FileVisitResult.CONTINUE;
-                    }
-                });
+            @Override
+            public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
+                if (attrs.isRegularFile()
+                        && !EXCLUDED.contains(file.getFileName().toString())) {
+                    files.add(file);
+                }
+                return FileVisitResult.CONTINUE;
+            }
+        });
         // Sorted by the archive-relative path rather than by the OS's walk order, which differs
         // between machines and would make the same world hash differently on two build servers.
         files.sort(Comparator.comparing(file -> worldFolder.relativize(file).toString()));

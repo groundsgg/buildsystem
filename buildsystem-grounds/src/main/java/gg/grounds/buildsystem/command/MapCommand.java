@@ -71,8 +71,8 @@ public final class MapCommand implements CommandExecutor, TabCompleter {
             sender.sendMessage("Run this in-game, standing in the world you mean.");
             return true;
         }
-        BuildWorld world = BuildSystemProvider.get().getWorldService().getWorldStorage()
-                .getBuildWorld(player.getWorld());
+        BuildWorld world =
+                BuildSystemProvider.get().getWorldService().getWorldStorage().getBuildWorld(player.getWorld());
         if (world == null) {
             error(player, "This is not a build world.");
             return true;
@@ -122,20 +122,17 @@ public final class MapCommand implements CommandExecutor, TabCompleter {
             error(player, "Already linked to " + existing + ".");
             return;
         }
-        offMainThread(
-                player,
-                () -> {
-                    List<MapSummary> maps = registry.listMaps();
-                    boolean exists = maps.stream().anyMatch(map -> map.address().equals(address));
-                    if (!exists) {
-                        registry.createMap(address, world.getName(), "ARENA", false);
-                    }
-                    onMainThread(
-                            () -> {
-                                MapLink.link(world, address, null);
-                                ok(player, "Linked to " + address + (exists ? "." : " (new map)."));
-                            });
-                });
+        offMainThread(player, () -> {
+            List<MapSummary> maps = registry.listMaps();
+            boolean exists = maps.stream().anyMatch(map -> map.address().equals(address));
+            if (!exists) {
+                registry.createMap(address, world.getName(), "ARENA", false);
+            }
+            onMainThread(() -> {
+                MapLink.link(world, address, null);
+                ok(player, "Linked to " + address + (exists ? "." : " (new map)."));
+            });
+        });
     }
 
     private void push(Player player, BuildWorld world, @Nullable String note) {
@@ -161,43 +158,32 @@ public final class MapCommand implements CommandExecutor, TabCompleter {
         Integer parent = MapLink.baseVersionOf(world);
         info(player, "Packing " + address + "…");
 
-        offMainThread(
-                player,
-                () -> {
-                    Path archive = Files.createTempFile("grounds-map-", ".tar.zst");
-                    try {
-                        WorldArchive.Archive packed = WorldArchive.pack(folder, archive);
-                        onMainThread(() -> bukkitWorld.setAutoSave(autoSave));
-                        info(
-                                player,
-                                "Uploading " + mib(packed.sizeBytes()) + " to the registry…");
-                        MapVersion published =
-                                registry.push(
-                                        address,
-                                        packed.file(),
-                                        packed.sha256(),
-                                        packed.sizeBytes(),
-                                        parent,
-                                        note);
-                        onMainThread(
-                                () -> {
-                                    MapLink.link(world, address, published.version());
-                                    ok(
-                                            player,
-                                            "Published "
-                                                    + address
-                                                    + " v"
-                                                    + published.version()
-                                                    + " ("
-                                                    + mib(packed.sizeBytes())
-                                                    + "). An admin decides when it goes live.");
-                                });
-                    } finally {
-                        // Whatever happened, autosave goes back on and the temp file goes away.
-                        onMainThread(() -> bukkitWorld.setAutoSave(autoSave));
-                        Files.deleteIfExists(archive);
-                    }
+        offMainThread(player, () -> {
+            Path archive = Files.createTempFile("grounds-map-", ".tar.zst");
+            try {
+                WorldArchive.Archive packed = WorldArchive.pack(folder, archive);
+                onMainThread(() -> bukkitWorld.setAutoSave(autoSave));
+                info(player, "Uploading " + mib(packed.sizeBytes()) + " to the registry…");
+                MapVersion published =
+                        registry.push(address, packed.file(), packed.sha256(), packed.sizeBytes(), parent, note);
+                onMainThread(() -> {
+                    MapLink.link(world, address, published.version());
+                    ok(
+                            player,
+                            "Published "
+                                    + address
+                                    + " v"
+                                    + published.version()
+                                    + " ("
+                                    + mib(packed.sizeBytes())
+                                    + "). An admin decides when it goes live.");
                 });
+            } finally {
+                // Whatever happened, autosave goes back on and the temp file goes away.
+                onMainThread(() -> bukkitWorld.setAutoSave(autoSave));
+                Files.deleteIfExists(archive);
+            }
+        });
     }
 
     private void fork(Player player, BuildWorld world, @Nullable String target) {
@@ -211,18 +197,16 @@ public final class MapCommand implements CommandExecutor, TabCompleter {
             return;
         }
         Integer base = MapLink.baseVersionOf(world);
-        offMainThread(
-                player,
-                () -> {
-                    MapSummary forked = registry.fork(address, target, base, null);
-                    ok(
-                            player,
-                            "Forked "
-                                    + address
-                                    + " into "
-                                    + forked.address()
-                                    + ". It starts at v1 with the same content and its own history.");
-                });
+        offMainThread(player, () -> {
+            MapSummary forked = registry.fork(address, target, base, null);
+            ok(
+                    player,
+                    "Forked "
+                            + address
+                            + " into "
+                            + forked.address()
+                            + ". It starts at v1 with the same content and its own history.");
+        });
     }
 
     private void versions(Player player, BuildWorld world) {
@@ -231,53 +215,43 @@ public final class MapCommand implements CommandExecutor, TabCompleter {
             error(player, "This world is not linked to a map.");
             return;
         }
-        offMainThread(
-                player,
-                () -> {
-                    List<MapVersion> versions = registry.listVersions(address);
-                    if (versions.isEmpty()) {
-                        info(player, "No versions yet — /map push makes the first one.");
-                        return;
-                    }
-                    info(player, address + ":");
-                    versions.stream()
-                            .sorted((a, b) -> Integer.compare(b.version(), a.version()))
-                            .limit(10)
-                            .forEach(
-                                    version ->
-                                            info(
-                                                    player,
-                                                    "  v"
-                                                            + version.version()
-                                                            + " · "
-                                                            + version.state().toLowerCase(Locale.ROOT)
-                                                            + (version.note() == null
-                                                                    ? ""
-                                                                    : " · " + version.note())));
-                });
+        offMainThread(player, () -> {
+            List<MapVersion> versions = registry.listVersions(address);
+            if (versions.isEmpty()) {
+                info(player, "No versions yet — /map push makes the first one.");
+                return;
+            }
+            info(player, address + ":");
+            versions.stream()
+                    .sorted((a, b) -> Integer.compare(b.version(), a.version()))
+                    .limit(10)
+                    .forEach(version -> info(
+                            player,
+                            "  v"
+                                    + version.version()
+                                    + " · "
+                                    + version.state().toLowerCase(Locale.ROOT)
+                                    + (version.note() == null ? "" : " · " + version.note())));
+        });
     }
 
     // ------------------------------------------------------------ plumbing
 
     /** Anything that touches the network or the disk. Never the main thread. */
     private void offMainThread(Player player, Work work) {
-        plugin.getServer()
-                .getScheduler()
-                .runTaskAsynchronously(
-                        plugin,
-                        () -> {
-                            try {
-                                work.run();
-                            } catch (RegistryException e) {
-                                error(player, e.getMessage());
-                            } catch (IOException e) {
-                                error(player, "Could not read the world: " + e.getMessage());
-                            } catch (RuntimeException e) {
-                                // The builder gets a sentence; the console gets the trace.
-                                error(player, "Something went wrong. An admin can see the details.");
-                                plugin.getLogger().severe("map command failed: " + e);
-                            }
-                        });
+        plugin.getServer().getScheduler().runTaskAsynchronously(plugin, () -> {
+            try {
+                work.run();
+            } catch (RegistryException e) {
+                error(player, e.getMessage());
+            } catch (IOException e) {
+                error(player, "Could not read the world: " + e.getMessage());
+            } catch (RuntimeException e) {
+                // The builder gets a sentence; the console gets the trace.
+                error(player, "Something went wrong. An admin can see the details.");
+                plugin.getLogger().severe("map command failed: " + e);
+            }
+        });
     }
 
     /** World data is not thread-safe, so writing it goes back onto the tick. */
@@ -314,8 +288,7 @@ public final class MapCommand implements CommandExecutor, TabCompleter {
     }
 
     @Override
-    public @Nullable List<String> onTabComplete(
-            CommandSender sender, Command command, String label, String[] args) {
+    public @Nullable List<String> onTabComplete(CommandSender sender, Command command, String label, String[] args) {
         if (args.length != 1) {
             return List.of();
         }

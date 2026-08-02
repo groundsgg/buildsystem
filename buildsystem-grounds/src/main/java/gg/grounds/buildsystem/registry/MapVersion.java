@@ -37,7 +37,9 @@ public record MapVersion(
                 json.get("version").getAsInt(),
                 json.get("state").getAsString(),
                 optionalString(json, "bundleSha256"),
-                json.get("parentVersion").isJsonNull() ? null : json.get("parentVersion").getAsInt(),
+                json.get("parentVersion").isJsonNull()
+                        ? null
+                        : json.get("parentVersion").getAsInt(),
                 json.get("sizeBytes").isJsonNull() ? 0L : json.get("sizeBytes").getAsLong(),
                 optionalString(json, "note"));
     }

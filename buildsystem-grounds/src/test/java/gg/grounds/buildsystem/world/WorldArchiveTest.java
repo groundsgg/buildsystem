@@ -37,7 +37,8 @@ import org.junit.jupiter.api.io.TempDir;
 
 class WorldArchiveTest {
 
-    @TempDir Path tmp;
+    @TempDir
+    Path tmp;
 
     /**
      * The registry keys bundles by digest, so an unchanged world has to produce an unchanged
@@ -77,24 +78,23 @@ class WorldArchiveTest {
      */
     @Test
     void leaves_player_state_and_the_lock_file_out() throws IOException {
-        Path world =
-                world(
-                        "region/r.0.0.mca",
-                        "level.dat",
-                        "playerdata/0000-0000.dat",
-                        "stats/0000-0000.json",
-                        "advancements/0000-0000.json",
-                        "session.lock",
-                        "uid.dat");
+        Path world = world(
+                "region/r.0.0.mca",
+                "level.dat",
+                "playerdata/0000-0000.dat",
+                "stats/0000-0000.json",
+                "advancements/0000-0000.json",
+                "session.lock",
+                "uid.dat");
 
-        List<String> entries = entriesOf(WorldArchive.pack(world, tmp.resolve("a.tar.zst")).file());
+        List<String> entries =
+                entriesOf(WorldArchive.pack(world, tmp.resolve("a.tar.zst")).file());
 
         assertTrue(entries.contains("region/r.0.0.mca"));
         assertTrue(entries.contains("level.dat"));
         assertFalse(entries.stream().anyMatch(entry -> entry.startsWith("playerdata/")), entries.toString());
         assertFalse(entries.stream().anyMatch(entry -> entry.startsWith("stats/")), entries.toString());
-        assertFalse(
-                entries.stream().anyMatch(entry -> entry.startsWith("advancements/")), entries.toString());
+        assertFalse(entries.stream().anyMatch(entry -> entry.startsWith("advancements/")), entries.toString());
         assertFalse(entries.contains("session.lock"), entries.toString());
         assertFalse(entries.contains("uid.dat"), entries.toString());
     }

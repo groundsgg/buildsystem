@@ -48,6 +48,10 @@ Deliberately no digests, no version numbers to type, no bucket names. `/map push
 links a fresh world and pushes it in one go; after that `/map push` alone is enough, and anything
 you type becomes the note.
 
+Addresses are lowercase — they become URL paths and object keys, so the registry allows only
+`[a-z0-9-]` per segment. Typing a world name is fine: `/map push lobby/MainLobby` becomes
+`lobby/mainlobby` and says so, and the readable name survives as the map's display name.
+
 The link lives in `plugins/GroundsMaps/links.yml`, keyed by the world's **UUID** — so renaming a
 world in the navigator cannot separate it from its map. It is not stored as BuildSystem world data:
 `WorldDataKey.of` is public, but `WorldDataImpl` registers its properties at construction and

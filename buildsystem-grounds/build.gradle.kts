@@ -55,7 +55,7 @@ bukkit {
     commands {
         register("map") {
             description = "Publish, fork and inspect the map this world belongs to"
-            usage = "/<command> [status|push|fork|versions|link]"
+            usage = "/<command> [login|logout|status|push|fork|versions|link]"
             permission = "grounds.map"
         }
     }

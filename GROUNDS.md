@@ -36,7 +36,9 @@ One plugin, `GroundsMaps`, depending on `BuildSystem`. It gives builders one com
 
 | Command | What it does |
 |---|---|
-| `/map status` | Which map this world is, and which version it was built on |
+| `/map login` | Sign in as yourself, so pushes are recorded under your name |
+| `/map logout` | Stop acting as yourself |
+| `/map status` | Who you are signed in as, which map this world is, and which version it was built on |
 | `/map link <namespace/name>` | Ties this world to a map, creating the map if it is new |
 | `/map push [note]` | Packs the world, uploads it, publishes a new version |
 | `/map fork <namespace/name>` | A new map from this one's current version. Copies no bytes |
@@ -61,15 +63,10 @@ map is a place, not the people who visited it while it was built.
 
 ## Setting it up
 
-The plugin refuses to enable without a credential:
-
-```
-[GroundsMaps] GROUNDS_MAPS_CLIENT_SECRET is not set. The build server cannot talk to
-the map registry, so this plugin will not enable.
-```
-
-That is deliberate. A build server that silently cannot publish looks like a working build server
-until somebody finishes a map and loses the afternoon.
+**`GROUNDS_MAPS_CLIENT_SECRET` is optional.** It gives the build server an identity of its own, for
+pushes made without anybody signed in. Without it the plugin still enables and logs a note — every
+action then has to be somebody's, which is arguably the better way to run it. Set it only if you
+want unattended pushes to work.
 
 ### Where the secret comes from
 

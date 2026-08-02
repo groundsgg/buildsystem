@@ -72,6 +72,57 @@ class DeviceFlowPkceTest {
         }
     }
 
+    /**
+     * The redemption must carry the SAME verifier the challenge was derived from. Asserting only
+     * the device request would pass while the poll sent something else — and Keycloak checks the
+     * verifier only after approval, so that mismatch is invisible until a builder has already
+     * clicked through.
+     */
+    @Test
+    void redeems_with_the_verifier_the_challenge_was_built_from() throws Exception {
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        Map<String, String> deviceRequest = new HashMap<>();
+        Map<String, String> tokenRequest = new HashMap<>();
+        server.createContext("/realms/x/protocol/openid-connect/auth/device", exchange -> {
+            deviceRequest.putAll(parse(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8)));
+            respond(
+                    exchange,
+                    200,
+                    "{\"device_code\":\"dc\",\"user_code\":\"UC\","
+                            + "\"verification_uri\":\"https://example/device\",\"interval\":0}");
+        });
+        server.createContext("/realms/x/protocol/openid-connect/token", exchange -> {
+            tokenRequest.putAll(parse(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8)));
+            respond(exchange, 200, "{\"access_token\":\"at\",\"refresh_token\":\"rt\",\"expires_in\":300}");
+        });
+        server.start();
+        try {
+            String issuer = "http://127.0.0.1:" + server.getAddress().getPort() + "/realms/x";
+            DeviceFlow flow = new DeviceFlow(issuer, "grounds-cli");
+            DeviceFlow.Pending pending = flow.begin();
+
+            DeviceFlow.Tokens tokens = flow.awaitApproval(pending);
+
+            assertEquals("at", tokens.accessToken());
+            assertEquals("dc", tokenRequest.get("device_code"));
+            assertEquals(
+                    deviceRequest.get("code_challenge"),
+                    challengeOf(tokenRequest.get("code_verifier")),
+                    "the redeemed verifier must hash to the challenge that was registered");
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    private static void respond(com.sun.net.httpserver.HttpExchange exchange, int status, String body)
+            throws IOException {
+        byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
+        exchange.getResponseHeaders().add("Content-Type", "application/json");
+        exchange.sendResponseHeaders(status, bytes.length);
+        exchange.getResponseBody().write(bytes);
+        exchange.close();
+    }
+
     private static String challengeOf(String verifier) throws Exception {
         byte[] digest = MessageDigest.getInstance("SHA-256").digest(verifier.getBytes(StandardCharsets.US_ASCII));
         return Base64.getUrlEncoder().withoutPadding().encodeToString(digest);

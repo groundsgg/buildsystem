@@ -99,6 +99,13 @@ public final class PointsOfInterest {
 
     public static void write(Path worldFolder, Map<String, Poi> pois) throws IOException {
         Path file = fileIn(worldFolder);
+        // A file that exists but will not parse reads as empty, so writing over it would replace
+        // every point with whichever one is being set — silently. That is the whole risk of editing
+        // this by hand, so the write refuses and says what to do instead.
+        if (Files.isRegularFile(file) && !isReadable(file)) {
+            throw new IOException(fileIn(worldFolder).getFileName()
+                    + " is not valid JSON. Fix or delete it — refusing to overwrite what is in it.");
+        }
         Files.createDirectories(file.getParent());
         Document document = new Document();
         document.pois = new TreeMap<>(pois);
@@ -109,6 +116,16 @@ public final class PointsOfInterest {
             GSON.toJson(document, writer);
         }
         Files.move(temporary, file, StandardCopyOption.REPLACE_EXISTING);
+    }
+
+    /** Whether the file on disk parses. Absent counts as readable: there is nothing to lose. */
+    public static boolean isReadable(Path file) {
+        try (Reader reader = Files.newBufferedReader(file, StandardCharsets.UTF_8)) {
+            GSON.fromJson(reader, Document.class);
+            return true;
+        } catch (IOException | JsonSyntaxException e) {
+            return false;
+        }
     }
 
     public static @Nullable Poi get(Path worldFolder, String name) {

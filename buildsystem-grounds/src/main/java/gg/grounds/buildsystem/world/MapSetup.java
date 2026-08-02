@@ -80,8 +80,23 @@ public final class MapSetup {
         }
     }
 
+    private static boolean isReadable(Path file) {
+        try (Reader reader = Files.newBufferedReader(file, StandardCharsets.UTF_8)) {
+            GSON.fromJson(reader, Document.class);
+            return true;
+        } catch (IOException | JsonSyntaxException e) {
+            return false;
+        }
+    }
+
     public static void write(Path worldFolder, Setup setup) throws IOException {
         Path file = fileIn(worldFolder);
+        // Same reason as the points: an unparseable file reads as "not set up", and writing over it
+        // would quietly discard whatever a builder had edited by hand.
+        if (Files.isRegularFile(file) && !isReadable(file)) {
+            throw new IOException("setup.json is not valid JSON. Fix or delete it — refusing to"
+                    + " overwrite what is in it.");
+        }
         Files.createDirectories(file.getParent());
         Document document = new Document();
         document.gamemode = setup.gamemode();

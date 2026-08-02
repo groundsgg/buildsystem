@@ -23,7 +23,9 @@ import gg.grounds.buildsystem.command.MapSetupCommand;
 import gg.grounds.buildsystem.registry.DeviceFlow;
 import gg.grounds.buildsystem.registry.PlayerLogins;
 import gg.grounds.buildsystem.registry.RegistryClient;
+import gg.grounds.buildsystem.world.BlockMarkListener;
 import gg.grounds.buildsystem.world.MapLinks;
+import gg.grounds.buildsystem.world.PendingMarks;
 import java.util.Objects;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.jspecify.annotations.NullMarked;
@@ -68,7 +70,10 @@ public final class GroundsMapsPlugin extends JavaPlugin {
 
         // Its own command because `/ms team1 bed` is typed once per place per team, and
         // `/map poi set team1.bed` is the same thing with more to mistype.
-        MapSetupCommand setup = new MapSetupCommand();
+        PendingMarks pendingMarks = new PendingMarks();
+        getServer().getPluginManager().registerEvents(new BlockMarkListener(pendingMarks), this);
+
+        MapSetupCommand setup = new MapSetupCommand(pendingMarks);
         Objects.requireNonNull(getCommand("ms"), "the ms command is declared in plugin.yml")
                 .setExecutor(setup);
         Objects.requireNonNull(getCommand("ms")).setTabCompleter(setup);

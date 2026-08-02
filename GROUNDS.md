@@ -67,21 +67,33 @@ from the portal. Builders never move a pin — that separation is enforced by th
 A gamemode's requirements come from one number the builder actually knows:
 
 ```
-/map setup bedwars 4        # this map is bedwars, four teams
-/ms team1 spawn             # stand there, name it
-/ms team1 bed
-/ms map lobby
-/map setup                  # what is still missing, grouped by team
+/map setup bedwars 4                     # four teams: red, blue, green, yellow
+/map setup bedwars green pink            # or name the colours yourself
+/ms red spawn                            # stand there, name it
+/ms red bed                              # then right-click the bed
+/ms lobby                                # shared places need no group
+/map setup                               # what is still missing, by colour
 ```
 
+**Teams are colours, not numbers.** A player sees the red bed and the blue base; `team3` is
+something a builder has to translate every time they walk into one. `4` picks the first four
+conventional colours, or name them — any of Minecraft's sixteen, in any order.
+
+**Things that already stand get clicked, not stood next to.** A bed, a generator pad, a shop block:
+`/ms red bed` arms the next right-click, and the block's centre is recorded. Standing beside a bed
+and taking the player's position is off by the width of a player. Spawns, the lobby and the
+spectator point *are* a player's position, so those are taken from where the builder stands — at
+their feet, facing where they look. The armed click expires after two minutes, because a click that
+outlives the memory of arming it turns an ordinary right-click into a silent edit.
+
 `/ms` exists next to `/map poi set` because it is typed once per place per team — twenty-eight
-times for four-team BedWars — and because it knows the profile. `/ms team1 spwan` is **refused**
+times for four-team BedWars — and because it knows the profile. `/ms red spwan` is **refused**
 rather than quietly becoming a point nothing will ever read, which is the failure mode that leaves
 a map looking finished and behaving broken. Every reply names the next command to type, since
 typing it is the work.
 
 Adding a gamemode is a line in `SetupProfile`, not a new code path. BedWars asks for `spawn`, `bed`,
-`iron`, `gold`, `shop` and `upgrade` per team, plus `lobby`, `spectator`, `diamond.1` and
+`iron`, `gold`, `shop` and `upgrade` per colour, plus `lobby`, `spectator`, `diamond.1` and
 `emerald.1` once.
 
 `grounds/setup.json` travels in the bundle like the points do, so a gamemode loading a map is told

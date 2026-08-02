@@ -258,9 +258,15 @@ public final class MapCommand implements CommandExecutor, TabCompleter {
                 error(player, "No setup for \"" + gamemode + "\". Known: " + String.join(", ", SetupProfile.gamemodes()));
                 return;
             }
-            int teams = args.length > 2 ? parseTeams(args[2]) : -1;
-            if (teams < 1 || teams > 16) {
-                error(player, "How many teams? /map setup " + gamemode + " 4");
+            // Either a count — "4" picks the first four colours — or the colours themselves, for
+            // a map whose bases are green and pink. Both end up as a list of colours, because a
+            // player sees the red bed, never team one.
+            List<String> teams = teamsFrom(args);
+            if (teams.isEmpty()) {
+                error(
+                        player,
+                        "How many teams? /map setup " + gamemode + " 4 — or name them: /map setup "
+                                + gamemode + " red blue green yellow");
                 return;
             }
             try {
@@ -269,7 +275,7 @@ public final class MapCommand implements CommandExecutor, TabCompleter {
                 error(player, "Could not save the setup: " + e.getMessage());
                 return;
             }
-            ok(player, "This map is " + gamemode + " for " + teams + " teams.");
+            ok(player, "This map is " + gamemode + " for " + teams.size() + " teams: " + String.join(", ", teams));
         }
 
         MapSetup.Setup current = MapSetup.read(folder);
@@ -288,11 +294,11 @@ public final class MapCommand implements CommandExecutor, TabCompleter {
         int done = required - SetupProfile.missing(setup.gamemode(), setup.teams(), marked).size();
 
         if (missing.isEmpty()) {
-            ok(player, setup.gamemode() + " for " + setup.teams() + " teams: all " + required
+            ok(player, setup.gamemode() + " for " + setup.teams().size() + " teams: all " + required
                     + " places marked. /map push publishes it.");
             return;
         }
-        info(player, setup.gamemode() + " for " + setup.teams() + " teams — " + done + " of "
+        info(player, setup.gamemode() + " for " + setup.teams().size() + " teams — " + done + " of "
                 + required + " marked. Still missing:");
         missing.forEach((group, things) -> player.sendMessage(Component.text("  " + group + ": ", NamedTextColor.GRAY)
                 .append(Component.text(String.join(", ", things), NamedTextColor.RED))));
@@ -300,12 +306,27 @@ public final class MapCommand implements CommandExecutor, TabCompleter {
                 + " " + missing.values().iterator().next().get(0));
     }
 
-    private static int parseTeams(String raw) {
-        try {
-            return Integer.parseInt(raw);
-        } catch (NumberFormatException e) {
-            return -1;
+    /** `4` means the first four colours; `red blue` means exactly those. */
+    private static List<String> teamsFrom(String[] args) {
+        if (args.length == 3) {
+            try {
+                int count = Integer.parseInt(args[2]);
+                if (count >= 1 && count <= SetupProfile.COLOURS.size()) {
+                    return SetupProfile.defaultColours(count);
+                }
+            } catch (NumberFormatException e) {
+                // Not a count, so read it as the first colour below.
+            }
         }
+        List<String> colours = new ArrayList<>();
+        for (int i = 2; i < args.length; i++) {
+            String colour = args[i].toLowerCase(Locale.ROOT);
+            if (!SetupProfile.isColour(colour) || colours.contains(colour)) {
+                return List.of();
+            }
+            colours.add(colour);
+        }
+        return colours;
     }
 
     private void poi(Player player, BuildWorld world, String[] args) {

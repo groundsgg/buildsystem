@@ -69,12 +69,24 @@ public final class MapSetup {
             return null;
         }
         try (Reader reader = Files.newBufferedReader(file, StandardCharsets.UTF_8)) {
+            return read(reader);
+        } catch (IOException e) {
+            // A broken file reads as "not set up" rather than taking the map down with it.
+            return null;
+        }
+    }
+
+    static @Nullable Setup read(Reader reader) {
+        try {
             Document document = GSON.fromJson(reader, Document.class);
             if (document == null || document.gamemode == null || document.gamemode.isBlank()) {
                 return null;
             }
+            if (document.teams != null && document.teams.contains(null)) {
+                return null;
+            }
             return new Setup(document.gamemode, document.teams == null ? List.of() : List.copyOf(document.teams));
-        } catch (IOException | JsonSyntaxException e) {
+        } catch (JsonSyntaxException e) {
             // A broken file reads as "not set up" rather than taking the map down with it.
             return null;
         }

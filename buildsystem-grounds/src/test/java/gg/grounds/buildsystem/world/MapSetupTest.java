@@ -58,4 +58,14 @@ class MapSetupTest {
 
         assertNull(MapSetup.read(world));
     }
+
+    @Test
+    void a_setup_with_a_null_team_reads_as_not_set_up() throws IOException {
+        Files.createDirectories(world.resolve("grounds"));
+        Files.writeString(
+                world.resolve("grounds").resolve("setup.json"),
+                "{\"gamemode\":\"bedwars\",\"teams\":[null]}");
+
+        assertNull(MapSetup.read(world));
+    }
 }

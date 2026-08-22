@@ -1,0 +1,9 @@
+.git
+.github
+.githooks
+.gradle
+**/.gradle
+**/build
+.idea
+**/*.iml
+docs

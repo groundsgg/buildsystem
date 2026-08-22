@@ -522,6 +522,11 @@ public final class MapCommand implements CommandExecutor, TabCompleter {
                     }
                 }
                 WorldArchive.Archive packed = WorldArchive.pack(folder, archive);
+                String archiveProblem = MapPublishValidation.problem(packed);
+                if (archiveProblem != null) {
+                    onMainThread(() -> error(player, archiveProblem));
+                    return;
+                }
                 onMainThread(() -> bukkitWorld.setAutoSave(autoSave));
                 info(player, "Uploading " + mib(packed.sizeBytes()) + " to the registry…");
                 MapVersion published =

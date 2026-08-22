@@ -49,6 +49,27 @@ class MapPublishValidationTest {
     }
 
     @Test
+    void accepts_a_valid_archived_lobby_after_its_live_spawn_is_removed() throws IOException {
+        MapSetup.write(world, new MapSetup.Setup("lobby", List.of()));
+        PointsOfInterest.write(world, Map.of("spawn", new PointsOfInterest.Poi(10.5, 64.0, -3.5, 90.0f, 0.0f)));
+        WorldArchive.Archive archive = WorldArchive.pack(world, world.resolveSibling("world.tar.zst"));
+        Files.delete(PointsOfInterest.fileIn(world));
+
+        assertNull(MapPublishValidation.problem(archive));
+    }
+
+    @Test
+    void refuses_an_invalid_archived_lobby_after_its_live_spawn_is_repaired() throws IOException {
+        MapSetup.write(world, new MapSetup.Setup("lobby", List.of()));
+        WorldArchive.Archive archive = WorldArchive.pack(world, world.resolveSibling("world.tar.zst"));
+        PointsOfInterest.write(world, Map.of("spawn", new PointsOfInterest.Poi(10.5, 64.0, -3.5, 90.0f, 0.0f)));
+
+        assertEquals(
+                "This lobby has no spawn. Stand where players should land and run /ms spawn.",
+                MapPublishValidation.problem(archive));
+    }
+
+    @Test
     void refuses_a_lobby_with_a_null_spawn() throws IOException {
         writePois("{\"format\":1,\"pois\":{\"spawn\":null}}");
 

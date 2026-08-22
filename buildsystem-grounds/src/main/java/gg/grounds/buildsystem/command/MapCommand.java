@@ -29,6 +29,7 @@ import gg.grounds.buildsystem.registry.RegistryException;
 import gg.grounds.buildsystem.registry.TokenSource;
 import gg.grounds.buildsystem.world.MapAddresses;
 import gg.grounds.buildsystem.world.MapLinks;
+import gg.grounds.buildsystem.world.MapPublishValidation;
 import gg.grounds.buildsystem.world.MapSetup;
 import gg.grounds.buildsystem.world.PointsOfInterest;
 import gg.grounds.buildsystem.world.SetupProfile;
@@ -492,6 +493,12 @@ public final class MapCommand implements CommandExecutor, TabCompleter {
             error(player, "The world is not loaded.");
             return;
         }
+        Path folder = bukkitWorld.getWorldFolder().toPath();
+        String problem = MapPublishValidation.problem(folder);
+        if (problem != null) {
+            error(player, problem);
+            return;
+        }
 
         // Save on the main thread, then stop autosaving while we read the region files. A tick
         // that flushes a chunk mid-archive produces a bundle that is a valid tar of a corrupt
@@ -500,7 +507,6 @@ public final class MapCommand implements CommandExecutor, TabCompleter {
         boolean autoSave = bukkitWorld.isAutoSave();
         bukkitWorld.setAutoSave(false);
 
-        Path folder = bukkitWorld.getWorldFolder().toPath();
         Integer parent = links.baseVersionOf(world.getUniqueId());
         TokenSource auth = authFor(player);
         info(player, "Packing " + address + "…");

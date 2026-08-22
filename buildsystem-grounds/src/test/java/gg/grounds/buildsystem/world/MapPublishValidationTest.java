@@ -37,8 +37,7 @@ class MapPublishValidationTest {
     @Test
     void accepts_a_lobby_with_its_spawn() throws IOException {
         MapSetup.write(world, new MapSetup.Setup("lobby", List.of()));
-        PointsOfInterest.write(
-                world, Map.of("spawn", new PointsOfInterest.Poi(10.5, 64.0, -3.5, 90.0f, 0.0f)));
+        PointsOfInterest.write(world, Map.of("spawn", new PointsOfInterest.Poi(10.5, 64.0, -3.5, 90.0f, 0.0f)));
 
         assertNull(MapPublishValidation.problem(world));
     }

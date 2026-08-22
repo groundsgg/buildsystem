@@ -47,7 +47,7 @@ public final class MapPublishValidation {
     }
 
     /** Returns the user-facing publishing problem for the exact archive that will be uploaded. */
-    public static @Nullable String problem(WorldArchive.Archive archive) {
+    public static @Nullable String problem(WorldArchive.Archive archive) throws IOException {
         try (InputStream in = Files.newInputStream(archive.file());
                 ZstdInputStream zstd = new ZstdInputStream(in);
                 TarArchiveInputStream tar = new TarArchiveInputStream(zstd)) {
@@ -64,8 +64,6 @@ public final class MapPublishValidation {
             return problem(
                     setup == null ? null : MapSetup.read(new StringReader(new String(setup, StandardCharsets.UTF_8))),
                     pois == null ? null : poiDocument(new StringReader(new String(pois, StandardCharsets.UTF_8))));
-        } catch (IOException e) {
-            return null;
         }
     }
 

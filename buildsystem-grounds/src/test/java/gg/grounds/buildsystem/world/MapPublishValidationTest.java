@@ -12,6 +12,7 @@ package gg.grounds.buildsystem.world;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -67,6 +68,16 @@ class MapPublishValidationTest {
         assertEquals(
                 "This lobby has no spawn. Stand where players should land and run /ms spawn.",
                 MapPublishValidation.problem(archive));
+    }
+
+    @Test
+    void refuses_a_corrupt_archive() throws IOException {
+        Path archive = world.resolveSibling("corrupt.tar.zst");
+        Files.writeString(archive, "not a zstd archive");
+
+        assertThrows(
+                IOException.class,
+                () -> MapPublishValidation.problem(new WorldArchive.Archive(archive, "", 0)));
     }
 
     @Test

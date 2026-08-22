@@ -18,6 +18,14 @@
  */
 package gg.grounds.buildsystem.world;
 
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
+import com.google.gson.JsonSyntaxException;
+import java.io.IOException;
+import java.io.Reader;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import org.jspecify.annotations.NullMarked;
 import org.jspecify.annotations.Nullable;
@@ -34,9 +42,52 @@ public final class MapPublishValidation {
         if (setup == null || !setup.gamemode().equalsIgnoreCase("lobby")) {
             return null;
         }
-        if (PointsOfInterest.read(worldFolder).containsKey("spawn")) {
+        if (hasUsableSpawn(worldFolder)) {
             return null;
         }
         return "This lobby has no spawn. Stand where players should land and run /ms spawn.";
+    }
+
+    private static boolean hasUsableSpawn(Path worldFolder) {
+        Path points = PointsOfInterest.fileIn(worldFolder);
+        if (!Files.isRegularFile(points)) {
+            return false;
+        }
+        try (Reader reader = Files.newBufferedReader(points, StandardCharsets.UTF_8)) {
+            JsonElement root = JsonParser.parseReader(reader);
+            if (!root.isJsonObject()) {
+                return false;
+            }
+            JsonElement pois = root.getAsJsonObject().get("pois");
+            if (pois == null || !pois.isJsonObject()) {
+                return false;
+            }
+            JsonElement spawn = pois.getAsJsonObject().get("spawn");
+            return spawn != null
+                    && spawn.isJsonObject()
+                    && finiteDouble(spawn.getAsJsonObject(), "x")
+                    && finiteDouble(spawn.getAsJsonObject(), "y")
+                    && finiteDouble(spawn.getAsJsonObject(), "z")
+                    && finiteFloat(spawn.getAsJsonObject(), "yaw")
+                    && finiteFloat(spawn.getAsJsonObject(), "pitch");
+        } catch (IOException | JsonSyntaxException | IllegalStateException | NumberFormatException e) {
+            return false;
+        }
+    }
+
+    private static boolean finiteDouble(JsonObject point, String field) {
+        JsonElement value = point.get(field);
+        return value != null
+                && value.isJsonPrimitive()
+                && value.getAsJsonPrimitive().isNumber()
+                && Double.isFinite(value.getAsDouble());
+    }
+
+    private static boolean finiteFloat(JsonObject point, String field) {
+        JsonElement value = point.get(field);
+        return value != null
+                && value.isJsonPrimitive()
+                && value.getAsJsonPrimitive().isNumber()
+                && Float.isFinite(value.getAsFloat());
     }
 }

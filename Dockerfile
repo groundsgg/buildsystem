@@ -16,7 +16,7 @@ RUN --mount=type=cache,target=/root/.gradle \
     test "$(find build/libs -maxdepth 1 -type f -name 'BuildSystem-*.jar' | wc -l)" -eq 1 && \
     test "$(find build/libs -maxdepth 1 -type f -name 'GroundsMaps-*.jar' | wc -l)" -eq 1
 
-FROM ghcr.io/groundsgg/paper:1.4.0
+FROM ghcr.io/groundsgg/paper:1.4.2
 
 COPY --from=build /workspace/build/libs/BuildSystem-*.jar /app/plugins/
 COPY --from=build /workspace/build/libs/GroundsMaps-*.jar /app/plugins/

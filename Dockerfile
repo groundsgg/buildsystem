@@ -20,7 +20,7 @@ FROM ghcr.io/groundsgg/paper:1.4.2
 
 COPY --from=build /workspace/build/libs/BuildSystem-*.jar /app/plugins/
 COPY --from=build /workspace/build/libs/GroundsMaps-*.jar /app/plugins/
-COPY --from=ghcr.io/groundsgg/plugin-permissions:0.10.0 /jar/paper.jar /app/plugins/plugin-permissions.jar
+COPY --from=ghcr.io/groundsgg/plugin-permissions:0.11.0 /jar/paper.jar /app/plugins/plugin-permissions.jar
 
 # The release data image must contribute one, and only one, Paper permissions plugin.
 RUN test -f /app/plugins/plugin-permissions.jar && \

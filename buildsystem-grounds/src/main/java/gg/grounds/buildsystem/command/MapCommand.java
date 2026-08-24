@@ -254,26 +254,53 @@ public final class MapCommand implements CommandExecutor, TabCompleter {
                         registry, registry.serviceAccount(), cdnBaseUrl, address, parsed.version());
             }
             Path archive = Files.createTempFile("grounds-pull-", ".tar.zst");
+            Path staging = Files.createTempDirectory("grounds-pull-world-");
             try {
                 info(player, "Downloading " + address + " v" + bundle.version() + "…");
                 pullResolver.download(bundle.bundleUrl(), bundle.bundleSha256(), archive);
-                onMainThread(() -> installPulledWorld(player, worldName, address, bundle, archive, parsed.force()));
+                WorldArchive.unpack(archive, staging);
+                if (!WorldFolders.isImportableWorldDirectory(staging.toFile())) {
+                    throw new RegistryException(
+                            "the downloaded bundle is not a usable world (missing level.dat / region).");
+                }
+                onMainThread(() -> installStagedWorld(player, worldName, address, bundle, staging, parsed.force()));
             } catch (RegistryException e) {
                 deleteQuietly(archive);
+                deleteTreeQuietly(staging);
                 throw e;
+            } catch (IOException e) {
+                deleteQuietly(archive);
+                deleteTreeQuietly(staging);
+                throw new RegistryException("could not prepare the pulled world: " + e.getMessage(), e);
+            } finally {
+                deleteQuietly(archive);
             }
         });
     }
 
-    private void installPulledWorld(
-            Player player, String worldName, String address, BundleRef bundle, Path archive, boolean force) {
+    /**
+     * Install a world that was already unpacked into {@code staging}. The live world is only
+     * removed after staging succeeded, so a bad bundle cannot wipe a builder's work.
+     */
+    private void installStagedWorld(
+            Player player, String worldName, String address, BundleRef bundle, Path staging, boolean force) {
         BuildWorld existing =
                 BuildSystemProvider.get().getWorldService().getWorldStorage().getBuildWorld(worldName);
+        File folder = WorldFolders.forName(worldName);
+        boolean folderPresent = WorldFolders.isImportableWorldDirectory(folder);
+        if (!force && (existing != null || folderPresent)) {
+            error(
+                    player,
+                    "World \"" + worldName + "\" appeared while downloading. Use -f to replace it" + " (needs "
+                            + PERM_PULL_FORCE + ").");
+            deleteTreeQuietly(staging);
+            return;
+        }
         if (force && existing != null) {
             World bukkit = existing.getWorld().orElse(null);
             if (bukkit != null && !bukkit.getPlayers().isEmpty()) {
                 error(player, "Someone is still in \"" + worldName + "\". Ask them to leave, then retry -f.");
-                deleteQuietly(archive);
+                deleteTreeQuietly(staging);
                 return;
             }
             BuildSystemProvider.get()
@@ -282,36 +309,37 @@ public final class MapCommand implements CommandExecutor, TabCompleter {
                     .whenComplete((ok, err) -> onMainThread(() -> {
                         if (err != null) {
                             error(player, "Could not remove the old world: " + err.getMessage());
-                            deleteQuietly(archive);
+                            deleteTreeQuietly(staging);
                             return;
                         }
-                        unpackAndImport(player, worldName, address, bundle, archive);
+                        promoteStaging(player, worldName, address, bundle, staging);
                     }));
             return;
         }
-        if (force) {
-            File folder = WorldFolders.forName(worldName);
-            if (folder.isDirectory()) {
-                try {
-                    deleteTree(folder.toPath());
-                } catch (IOException e) {
-                    error(player, "Could not clear the old world folder: " + e.getMessage());
-                    deleteQuietly(archive);
-                    return;
-                }
-            }
-        }
-        unpackAndImport(player, worldName, address, bundle, archive);
+        promoteStaging(player, worldName, address, bundle, staging);
     }
 
-    private void unpackAndImport(Player player, String worldName, String address, BundleRef bundle, Path archive) {
+    private void promoteStaging(Player player, String worldName, String address, BundleRef bundle, Path staging) {
         offMainThread(player, () -> {
             Path target = WorldFolders.forName(worldName).toPath();
             try {
                 Files.createDirectories(target.getParent());
-                WorldArchive.unpack(archive, target);
-            } finally {
-                Files.deleteIfExists(archive);
+                if (Files.exists(target)) {
+                    deleteTree(target);
+                }
+                Files.move(staging, target);
+            } catch (IOException moveFailed) {
+                try {
+                    if (Files.exists(target)) {
+                        deleteTree(target);
+                    }
+                    copyTree(staging, target);
+                    deleteTree(staging);
+                } catch (IOException copyFailed) {
+                    deleteTreeQuietly(staging);
+                    throw new RegistryException(
+                            "could not install the pulled world: " + copyFailed.getMessage(), copyFailed);
+                }
             }
             onMainThread(() -> {
                 BuildWorld imported = BuildSystemProvider.get()
@@ -331,9 +359,17 @@ public final class MapCommand implements CommandExecutor, TabCompleter {
         });
     }
 
-    private static void deleteQuietly(Path archive) {
+    private static void deleteQuietly(Path path) {
         try {
-            Files.deleteIfExists(archive);
+            Files.deleteIfExists(path);
+        } catch (IOException ignored) {
+            // best effort
+        }
+    }
+
+    private static void deleteTreeQuietly(Path root) {
+        try {
+            deleteTree(root);
         } catch (IOException ignored) {
             // best effort
         }
@@ -353,6 +389,24 @@ public final class MapCommand implements CommandExecutor, TabCompleter {
             @Override
             public FileVisitResult postVisitDirectory(Path dir, IOException exc) throws IOException {
                 Files.delete(dir);
+                return FileVisitResult.CONTINUE;
+            }
+        });
+    }
+
+    private static void copyTree(Path source, Path target) throws IOException {
+        Files.walkFileTree(source, new SimpleFileVisitor<>() {
+            @Override
+            public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) throws IOException {
+                Path dest = target.resolve(source.relativize(dir).toString());
+                Files.createDirectories(dest);
+                return FileVisitResult.CONTINUE;
+            }
+
+            @Override
+            public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
+                Path dest = target.resolve(source.relativize(file).toString());
+                Files.copy(file, dest);
                 return FileVisitResult.CONTINUE;
             }
         });

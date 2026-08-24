@@ -43,8 +43,8 @@ class UploadErrorTest {
         HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         server.createContext("/v1/maps/bedwars/crater/uploads", exchange -> {
             String url = "http://127.0.0.1:" + exchange.getLocalAddress().getPort() + "/bucket/key";
-            byte[] body = ("{\"uploadId\":\"u\",\"key\":\"k\",\"url\":\"" + url + "\"}")
-                    .getBytes(StandardCharsets.UTF_8);
+            byte[] body =
+                    ("{\"uploadId\":\"u\",\"key\":\"k\",\"url\":\"" + url + "\"}").getBytes(StandardCharsets.UTF_8);
             exchange.getResponseHeaders().add("Content-Type", "application/json");
             exchange.sendResponseHeaders(200, body.length);
             exchange.getResponseBody().write(body);

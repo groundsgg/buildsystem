@@ -45,10 +45,8 @@ class SetupProfileTest {
         assertEquals("spawn", SetupProfile.resolve("lobby", "map", "spawn", Set.of()));
         // Not a block: it is where a player stands, so it comes from the builder's feet.
         assertFalse(SetupProfile.isBlock("spawn"));
-        assertEquals(
-                List.of("spawn"), SetupProfile.missing("lobby", List.of(), Set.of()), "nothing marked yet");
-        assertEquals(
-                List.of(), SetupProfile.missing("lobby", List.of(), Set.of("spawn")), "and then it is done");
+        assertEquals(List.of("spawn"), SetupProfile.missing("lobby", List.of(), Set.of()), "nothing marked yet");
+        assertEquals(List.of(), SetupProfile.missing("lobby", List.of(), Set.of("spawn")), "and then it is done");
     }
 
     @Test
@@ -68,7 +66,9 @@ class SetupProfileTest {
         assertTrue(required.contains("yellow.iron.1"));
         assertTrue(required.contains("gold.1"));
         // Two teams is two teams: nothing lingers from a bigger map.
-        assertEquals(11, SetupProfile.required("bedwars", SetupProfile.defaultColours(2)).size());
+        assertEquals(
+                11,
+                SetupProfile.required("bedwars", SetupProfile.defaultColours(2)).size());
     }
 
     /** Teams come as blocks so a builder can finish one base before walking to the next. */
@@ -77,9 +77,7 @@ class SetupProfileTest {
         List<String> required = SetupProfile.required("bedwars", SetupProfile.defaultColours(2));
 
         assertEquals("gold.1", required.get(0));
-        assertEquals(
-                List.of("red.spawn", "red.bed", "red.shop", "red.copper.1", "red.iron.1"),
-                required.subList(1, 6));
+        assertEquals(List.of("red.spawn", "red.bed", "red.shop", "red.copper.1", "red.iron.1"), required.subList(1, 6));
     }
 
     @Test
@@ -113,8 +111,7 @@ class SetupProfileTest {
     @Test
     void a_team_can_have_several_of_the_same_spawn() {
         assertEquals("red.copper.1", SetupProfile.resolve("bedwars", "red", "copper", Set.of()));
-        assertEquals(
-                "red.copper.2", SetupProfile.resolve("bedwars", "red", "copper", Set.of("red.copper.1")));
+        assertEquals("red.copper.2", SetupProfile.resolve("bedwars", "red", "copper", Set.of("red.copper.1")));
         assertEquals("red.iron.1", SetupProfile.resolve("bedwars", "red", "iron", Set.of("red.copper.1")));
         // The one-of-a-kind places keep their plain name.
         assertEquals("red.bed", SetupProfile.resolve("bedwars", "red", "bed", Set.of()));

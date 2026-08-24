@@ -59,4 +59,11 @@ class MapAddressesTest {
         // Three segments are a creator address or nothing; guessing a namespace would be worse.
         assertNull(MapAddresses.normalise("a/b/c"));
     }
+
+    @Test
+    void world_name_is_the_last_segment() {
+        assertEquals("mainlobby", MapAddresses.worldName("lobby/mainlobby"));
+        assertEquals("4x4-baumhaus", MapAddresses.worldName("bedwars/4x4-baumhaus"));
+        assertEquals("garden", MapAddresses.worldName("u/alice/garden"));
+    }
 }

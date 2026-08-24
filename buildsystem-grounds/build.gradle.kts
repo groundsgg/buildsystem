@@ -58,8 +58,8 @@ bukkit {
 
     commands {
         register("map") {
-            description = "Publish, fork and inspect the map this world belongs to"
-            usage = "/<command> [login|logout|status|push|fork|versions|link|poi|setup]"
+            description = "Publish, fork, pull and inspect maps on the build server"
+            usage = "/<command> [login|logout|status|push|pull|fork|versions|link|poi|setup]"
             permission = "grounds.map"
         }
         register("ms") {
@@ -72,6 +72,14 @@ bukkit {
     permissions {
         register("grounds.map") {
             description = "Use the map commands on the build server"
+            default = net.minecrell.pluginyml.bukkit.BukkitPluginDescription.Permission.Default.OP
+        }
+        register("grounds.maps.pull") {
+            description = "Pull a published map onto the build server"
+            default = net.minecrell.pluginyml.bukkit.BukkitPluginDescription.Permission.Default.OP
+        }
+        register("grounds.maps.pull.force") {
+            description = "Overwrite an existing world with /map pull -f"
             default = net.minecrell.pluginyml.bukkit.BukkitPluginDescription.Permission.Default.OP
         }
     }

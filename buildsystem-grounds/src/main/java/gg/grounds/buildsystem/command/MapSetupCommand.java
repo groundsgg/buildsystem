@@ -66,10 +66,8 @@ public final class MapSetupCommand implements CommandExecutor, TabCompleter {
             sender.sendMessage("Run this in-game, standing where the place belongs.");
             return true;
         }
-        BuildWorld buildWorld = BuildSystemProvider.get()
-                .getWorldService()
-                .getWorldStorage()
-                .getBuildWorld(player.getWorld());
+        BuildWorld buildWorld =
+                BuildSystemProvider.get().getWorldService().getWorldStorage().getBuildWorld(player.getWorld());
         if (buildWorld == null) {
             error(player, "This is not a build world.");
             return true;
@@ -119,8 +117,7 @@ public final class MapSetupCommand implements CommandExecutor, TabCompleter {
             // Already built and standing there: pointing at it is exact, and standing next to it
             // is off by the width of a player.
             pending.arm(player.getUniqueId(), point, world.getUID());
-            player.sendMessage(Component.text(
-                    "Right-click the " + thing + " for " + group + ".", NamedTextColor.AQUA));
+            player.sendMessage(Component.text("Right-click the " + thing + " for " + group + ".", NamedTextColor.AQUA));
             return true;
         }
 
@@ -136,17 +133,14 @@ public final class MapSetupCommand implements CommandExecutor, TabCompleter {
         }
 
         List<String> missing = SetupProfile.missing(setup.gamemode(), setup.teams(), pois.keySet());
-        player.sendMessage(Component.text(
-                (replaced ? "Moved " : "Marked ") + point + ".", NamedTextColor.GREEN));
+        player.sendMessage(Component.text((replaced ? "Moved " : "Marked ") + point + ".", NamedTextColor.GREEN));
         if (missing.isEmpty()) {
             player.sendMessage(Component.text(
-                    "That was the last one — the map is complete. /map push publishes it.",
-                    NamedTextColor.GREEN));
+                    "That was the last one — the map is complete. /map push publishes it.", NamedTextColor.GREEN));
         } else {
             // The next name, not a count: it is what they type next, and typing it is the work.
             player.sendMessage(Component.text(
-                    missing.size() + " left. Next: /ms " + asCommand(missing.get(0)),
-                    NamedTextColor.GRAY));
+                    missing.size() + " left. Next: /ms " + asCommand(missing.get(0)), NamedTextColor.GRAY));
         }
         return true;
     }
@@ -161,17 +155,15 @@ public final class MapSetupCommand implements CommandExecutor, TabCompleter {
     }
 
     @Override
-    public @Nullable List<String> onTabComplete(
-            CommandSender sender, Command command, String label, String[] args) {
+    public @Nullable List<String> onTabComplete(CommandSender sender, Command command, String label, String[] args) {
         if (!(sender instanceof Player player)) {
             return List.of();
         }
-        BuildWorld buildWorld = BuildSystemProvider.get()
-                .getWorldService()
-                .getWorldStorage()
-                .getBuildWorld(player.getWorld());
+        BuildWorld buildWorld =
+                BuildSystemProvider.get().getWorldService().getWorldStorage().getBuildWorld(player.getWorld());
         World world = buildWorld == null ? null : buildWorld.getWorld().orElse(null);
-        MapSetup.Setup setup = world == null ? null : MapSetup.read(world.getWorldFolder().toPath());
+        MapSetup.Setup setup =
+                world == null ? null : MapSetup.read(world.getWorldFolder().toPath());
         if (setup == null) {
             return List.of();
         }

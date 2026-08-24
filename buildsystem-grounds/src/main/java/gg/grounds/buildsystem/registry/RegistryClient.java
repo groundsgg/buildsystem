@@ -93,6 +93,11 @@ public final class RegistryClient {
         };
     }
 
+    /** Whether {@code GROUNDS_MAPS_CLIENT_SECRET} (or equivalent) was configured. */
+    public boolean hasServiceAccount() {
+        return !clientSecret.isBlank();
+    }
+
     // ----------------------------------------------------------------- maps
 
     /** Every map this service account is allowed to see. */

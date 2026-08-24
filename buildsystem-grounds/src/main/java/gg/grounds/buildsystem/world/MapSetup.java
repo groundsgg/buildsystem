@@ -55,7 +55,9 @@ public final class MapSetup {
 
     private static final class Document {
         int format = 1;
+
         @Nullable String gamemode;
+
         @Nullable List<String> teams;
     }
 
@@ -106,8 +108,8 @@ public final class MapSetup {
         // Same reason as the points: an unparseable file reads as "not set up", and writing over it
         // would quietly discard whatever a builder had edited by hand.
         if (Files.isRegularFile(file) && !isReadable(file)) {
-            throw new IOException("setup.json is not valid JSON. Fix or delete it — refusing to"
-                    + " overwrite what is in it.");
+            throw new IOException(
+                    "setup.json is not valid JSON. Fix or delete it — refusing to" + " overwrite what is in it.");
         }
         Files.createDirectories(file.getParent());
         Document document = new Document();

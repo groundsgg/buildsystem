@@ -64,6 +64,18 @@ public final class MapAddresses {
         return String.join("/", segments);
     }
 
+    /**
+     * Local BuildSystem world name for a normalised address: the segment after the last slash.
+     * {@code lobby/mainlobby} and {@code u/alice/garden} both become a single folder name.
+     */
+    public static String worldName(String normalisedAddress) {
+        int slash = normalisedAddress.lastIndexOf('/');
+        if (slash < 0 || slash == normalisedAddress.length() - 1) {
+            throw new IllegalArgumentException("not a normalised address: " + normalisedAddress);
+        }
+        return normalisedAddress.substring(slash + 1);
+    }
+
     private static String clean(String raw) {
         String lower = raw.toLowerCase(Locale.ROOT);
         StringBuilder out = new StringBuilder(lower.length());

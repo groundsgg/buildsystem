@@ -46,15 +46,13 @@ public final class GroundsMapsPlugin extends JavaPlugin {
     public void onEnable() {
         saveDefaultConfig();
 
-        // Optional now that builders sign in themselves: without it the plugin still works,
-        // every action simply has to be somebody's. Refusing to start would take away the login
-        // that makes the credential unnecessary in the first place.
+        // Optional for push (builders use /map login). Required for /map pull — see MapCommand.
         String clientSecret = System.getenv("GROUNDS_MAPS_CLIENT_SECRET");
         if (clientSecret == null || clientSecret.isBlank()) {
             clientSecret = "";
             getLogger()
                     .info("GROUNDS_MAPS_CLIENT_SECRET is not set — builders must run /map login"
-                            + " before pushing. That is a fine way to run this.");
+                            + " before pushing, and /map pull will not work until the secret is set.");
         }
 
         this.registry = new RegistryClient(
@@ -63,7 +61,8 @@ public final class GroundsMapsPlugin extends JavaPlugin {
         DeviceFlow deviceFlow = new DeviceFlow(require("oidc.issuer-url"), require("oidc.device-client-id"));
         PlayerLogins logins = new PlayerLogins(deviceFlow);
 
-        MapCommand command = new MapCommand(this, registry, deviceFlow, logins, new MapLinks(getDataFolder()));
+        MapCommand command = new MapCommand(
+                this, registry, deviceFlow, logins, new MapLinks(getDataFolder()), require("registry.cdn-base-url"));
         Objects.requireNonNull(getCommand("map"), "the map command is declared in plugin.yml")
                 .setExecutor(command);
         Objects.requireNonNull(getCommand("map")).setTabCompleter(command);

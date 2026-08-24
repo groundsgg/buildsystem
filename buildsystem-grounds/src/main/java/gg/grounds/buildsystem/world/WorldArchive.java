@@ -18,8 +18,10 @@
  */
 package gg.grounds.buildsystem.world;
 
+import com.github.luben.zstd.ZstdInputStream;
 import com.github.luben.zstd.ZstdOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
@@ -33,8 +35,10 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HexFormat;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
+import org.apache.commons.compress.archivers.tar.TarArchiveInputStream;
 import org.apache.commons.compress.archivers.tar.TarArchiveOutputStream;
 import org.jspecify.annotations.NullMarked;
 
@@ -119,6 +123,62 @@ public final class WorldArchive {
         return new Archive(target, HexFormat.of().formatHex(digest.digest()), Files.size(target));
     }
 
+    /**
+     * Extracts a registry bundle into an empty (or newly created) world folder.
+     *
+     * <p>Rejects absolute paths and {@code ..} segments so a hostile archive cannot write outside
+     * {@code targetFolder}. Entries under the same excluded names {@link #pack} skips are ignored
+     * if present.
+     */
+    public static void unpack(Path archive, Path targetFolder) throws IOException {
+        Files.createDirectories(targetFolder);
+        Path root = targetFolder.toAbsolutePath().normalize();
+        try (InputStream in = Files.newInputStream(archive);
+                ZstdInputStream zstd = new ZstdInputStream(in);
+                TarArchiveInputStream tar = new TarArchiveInputStream(zstd)) {
+            TarArchiveEntry entry;
+            while ((entry = tar.getNextEntry()) != null) {
+                String name = entry.getName().replace('\\', '/');
+                if (name.isEmpty() || name.endsWith("/")) {
+                    continue;
+                }
+                if (isUnsafeEntry(name) || isExcludedEntry(name)) {
+                    if (isUnsafeEntry(name)) {
+                        throw new IOException("refusing archive entry outside the world folder: " + name);
+                    }
+                    continue;
+                }
+                Path dest = root.resolve(name).normalize();
+                if (!dest.startsWith(root)) {
+                    throw new IOException("refusing archive entry outside the world folder: " + name);
+                }
+                Path parent = dest.getParent();
+                if (parent != null) {
+                    Files.createDirectories(parent);
+                }
+                Files.copy(tar, dest);
+            }
+        }
+    }
+
+    private static boolean isUnsafeEntry(String name) {
+        if (name.startsWith("/") || name.startsWith("../") || name.contains("/../") || name.equals("..")) {
+            return true;
+        }
+        // Windows drive / UNC style — reject anything that is not a relative path.
+        return name.indexOf(':') >= 0;
+    }
+
+    private static boolean isExcludedEntry(String name) {
+        String first = name;
+        int slash = name.indexOf('/');
+        if (slash >= 0) {
+            first = name.substring(0, slash);
+        }
+        return EXCLUDED.contains(first.toLowerCase(Locale.ROOT))
+                || EXCLUDED.contains(name.substring(name.lastIndexOf('/') + 1).toLowerCase(Locale.ROOT));
+    }
+
     private static List<Path> collect(Path worldFolder) throws IOException {
         List<Path> files = new ArrayList<>();
         Files.walkFileTree(worldFolder, new SimpleFileVisitor<>() {
@@ -128,8 +188,8 @@ public final class WorldArchive {
                     return FileVisitResult.CONTINUE;
                 }
                 String name = dir.getFileName().toString();
-                boolean excluded = EXCLUDED.contains(name)
-                        || (name.equals(NESTED_WORLDS) && worldFolder.equals(dir.getParent()));
+                boolean excluded =
+                        EXCLUDED.contains(name) || (name.equals(NESTED_WORLDS) && worldFolder.equals(dir.getParent()));
                 return excluded ? FileVisitResult.SKIP_SUBTREE : FileVisitResult.CONTINUE;
             }
 

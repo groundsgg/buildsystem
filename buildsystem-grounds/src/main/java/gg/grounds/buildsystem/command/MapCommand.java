@@ -20,7 +20,9 @@ package gg.grounds.buildsystem.command;
 
 import de.eintosti.buildsystem.api.BuildSystemProvider;
 import de.eintosti.buildsystem.api.world.BuildWorld;
+import gg.grounds.buildsystem.registry.BundleRef;
 import gg.grounds.buildsystem.registry.DeviceFlow;
+import gg.grounds.buildsystem.registry.MapPullResolver;
 import gg.grounds.buildsystem.registry.MapSummary;
 import gg.grounds.buildsystem.registry.MapVersion;
 import gg.grounds.buildsystem.registry.PlayerLogins;
@@ -34,9 +36,14 @@ import gg.grounds.buildsystem.world.MapSetup;
 import gg.grounds.buildsystem.world.PointsOfInterest;
 import gg.grounds.buildsystem.world.SetupProfile;
 import gg.grounds.buildsystem.world.WorldArchive;
+import gg.grounds.buildsystem.world.WorldFolders;
+import java.io.File;
 import java.io.IOException;
+import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.SimpleFileVisitor;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -69,23 +76,34 @@ import org.jspecify.annotations.Nullable;
 public final class MapCommand implements CommandExecutor, TabCompleter {
 
     private static final List<String> SUBCOMMANDS =
-            List.of("push", "fork", "versions", "link", "status", "login", "logout", "poi", "setup");
+            List.of("push", "pull", "fork", "versions", "link", "status", "login", "logout", "poi", "setup");
+
+    private static final String PERM_PULL = "grounds.maps.pull";
+    private static final String PERM_PULL_FORCE = "grounds.maps.pull.force";
 
     private final JavaPlugin plugin;
     private final RegistryClient registry;
     private final DeviceFlow deviceFlow;
     private final PlayerLogins logins;
     private final MapLinks links;
+    private final String cdnBaseUrl;
+    private final MapPullResolver pullResolver = new MapPullResolver();
     /** Who has a sign-in link outstanding, so a second one cannot orphan the first. */
     private final java.util.Set<java.util.UUID> pendingLogins = java.util.concurrent.ConcurrentHashMap.newKeySet();
 
     public MapCommand(
-            JavaPlugin plugin, RegistryClient registry, DeviceFlow deviceFlow, PlayerLogins logins, MapLinks links) {
+            JavaPlugin plugin,
+            RegistryClient registry,
+            DeviceFlow deviceFlow,
+            PlayerLogins logins,
+            MapLinks links,
+            String cdnBaseUrl) {
         this.plugin = plugin;
         this.registry = registry;
         this.deviceFlow = deviceFlow;
         this.logins = logins;
         this.links = links;
+        this.cdnBaseUrl = cdnBaseUrl;
     }
 
     /**
@@ -146,6 +164,12 @@ public final class MapCommand implements CommandExecutor, TabCompleter {
             ok(player, "Signed out. Pushes now run as the build server.");
             return true;
         }
+        // Pull seeds a world from the registry — it must work from the lobby, not only inside a
+        // build world that does not exist yet.
+        if (early.equals("pull")) {
+            pull(player, args);
+            return true;
+        }
 
         BuildWorld world =
                 BuildSystemProvider.get().getWorldService().getWorldStorage().getBuildWorld(player.getWorld());
@@ -162,12 +186,177 @@ public final class MapCommand implements CommandExecutor, TabCompleter {
             case "link" -> link(player, world, args.length > 1 ? args[1] : null);
             case "poi" -> poi(player, world, args);
             case "setup" -> setup(player, world, args);
-            default -> error(player, "Unknown: " + sub + ". Try /map push.");
+            default -> error(player, "Unknown: " + sub + ". Try /map push or /map pull.");
         }
         return true;
     }
 
     // ------------------------------------------------------------- commands
+
+    private void pull(Player player, String[] args) {
+        if (!player.hasPermission(PERM_PULL)) {
+            error(player, "You need " + PERM_PULL + " to pull maps.");
+            return;
+        }
+        if (!registry.hasServiceAccount()) {
+            error(
+                    player,
+                    "This build server has no GROUNDS_MAPS_CLIENT_SECRET — /map pull needs the" + " service account.");
+            return;
+        }
+        PullArgs parsed = PullArgs.parse(Arrays.copyOfRange(args, 1, args.length));
+        if (parsed == null) {
+            error(player, "Usage: /map pull <namespace/name> [version|latest] [-f]");
+            return;
+        }
+        if (parsed.force() && !player.hasPermission(PERM_PULL_FORCE)) {
+            error(player, "You need " + PERM_PULL_FORCE + " to use -f.");
+            return;
+        }
+        String address = usableAddress(player, parsed.addressTyped());
+        if (address == null) {
+            return;
+        }
+        String worldName = MapAddresses.worldName(address);
+        BuildWorld existing =
+                BuildSystemProvider.get().getWorldService().getWorldStorage().getBuildWorld(worldName);
+        File folder = WorldFolders.forName(worldName);
+        boolean folderPresent = WorldFolders.isImportableWorldDirectory(folder);
+        if ((existing != null || folderPresent) && !parsed.force()) {
+            error(
+                    player,
+                    "World \"" + worldName + "\" already exists. Use -f to replace it" + " (needs " + PERM_PULL_FORCE
+                            + ").");
+            return;
+        }
+        if (parsed.force() && existing != null) {
+            World bukkit = existing.getWorld().orElse(null);
+            if (bukkit != null && !bukkit.getPlayers().isEmpty()) {
+                error(player, "Someone is still in \"" + worldName + "\". Ask them to leave, then retry -f.");
+                return;
+            }
+        }
+        String env = System.getenv("GROUNDS_PERMISSION_ENVIRONMENT");
+        if (parsed.usePin() && (env == null || env.isBlank())) {
+            error(player, "GROUNDS_PERMISSION_ENVIRONMENT is not set — cannot resolve the pin.");
+            return;
+        }
+        final String pinEnv = env;
+        info(player, "Pulling " + address + "…");
+        offMainThread(player, () -> {
+            BundleRef bundle;
+            if (parsed.usePin()) {
+                bundle = pullResolver.resolvePin(cdnBaseUrl, pinEnv, address);
+            } else if (parsed.latest()) {
+                bundle = pullResolver.resolveVersion(registry, registry.serviceAccount(), cdnBaseUrl, address, null);
+            } else {
+                bundle = pullResolver.resolveVersion(
+                        registry, registry.serviceAccount(), cdnBaseUrl, address, parsed.version());
+            }
+            Path archive = Files.createTempFile("grounds-pull-", ".tar.zst");
+            try {
+                info(player, "Downloading " + address + " v" + bundle.version() + "…");
+                pullResolver.download(bundle.bundleUrl(), bundle.bundleSha256(), archive);
+                onMainThread(() -> installPulledWorld(player, worldName, address, bundle, archive, parsed.force()));
+            } catch (RegistryException e) {
+                deleteQuietly(archive);
+                throw e;
+            }
+        });
+    }
+
+    private void installPulledWorld(
+            Player player, String worldName, String address, BundleRef bundle, Path archive, boolean force) {
+        BuildWorld existing =
+                BuildSystemProvider.get().getWorldService().getWorldStorage().getBuildWorld(worldName);
+        if (force && existing != null) {
+            World bukkit = existing.getWorld().orElse(null);
+            if (bukkit != null && !bukkit.getPlayers().isEmpty()) {
+                error(player, "Someone is still in \"" + worldName + "\". Ask them to leave, then retry -f.");
+                deleteQuietly(archive);
+                return;
+            }
+            BuildSystemProvider.get()
+                    .getWorldService()
+                    .deleteWorld(existing)
+                    .whenComplete((ok, err) -> onMainThread(() -> {
+                        if (err != null) {
+                            error(player, "Could not remove the old world: " + err.getMessage());
+                            deleteQuietly(archive);
+                            return;
+                        }
+                        unpackAndImport(player, worldName, address, bundle, archive);
+                    }));
+            return;
+        }
+        if (force) {
+            File folder = WorldFolders.forName(worldName);
+            if (folder.isDirectory()) {
+                try {
+                    deleteTree(folder.toPath());
+                } catch (IOException e) {
+                    error(player, "Could not clear the old world folder: " + e.getMessage());
+                    deleteQuietly(archive);
+                    return;
+                }
+            }
+        }
+        unpackAndImport(player, worldName, address, bundle, archive);
+    }
+
+    private void unpackAndImport(Player player, String worldName, String address, BundleRef bundle, Path archive) {
+        offMainThread(player, () -> {
+            Path target = WorldFolders.forName(worldName).toPath();
+            try {
+                Files.createDirectories(target.getParent());
+                WorldArchive.unpack(archive, target);
+            } finally {
+                Files.deleteIfExists(archive);
+            }
+            onMainThread(() -> {
+                BuildWorld imported = BuildSystemProvider.get()
+                        .getWorldService()
+                        .importWorld(worldName)
+                        .notify(player)
+                        .build();
+                if (imported == null) {
+                    error(
+                            player,
+                            "Downloaded " + address + ", but BuildSystem could not import \"" + worldName + "\".");
+                    return;
+                }
+                linkQuietly(player, imported, address, bundle.version());
+                ok(player, "Pulled " + address + " v" + bundle.version() + " as world \"" + worldName + "\".");
+            });
+        });
+    }
+
+    private static void deleteQuietly(Path archive) {
+        try {
+            Files.deleteIfExists(archive);
+        } catch (IOException ignored) {
+            // best effort
+        }
+    }
+
+    private static void deleteTree(Path root) throws IOException {
+        if (!Files.exists(root)) {
+            return;
+        }
+        Files.walkFileTree(root, new SimpleFileVisitor<>() {
+            @Override
+            public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
+                Files.delete(file);
+                return FileVisitResult.CONTINUE;
+            }
+
+            @Override
+            public FileVisitResult postVisitDirectory(Path dir, IOException exc) throws IOException {
+                Files.delete(dir);
+                return FileVisitResult.CONTINUE;
+            }
+        });
+    }
 
     private void status(Player player, BuildWorld world) {
         String signedIn = logins.nameOf(player.getUniqueId());
@@ -256,7 +445,9 @@ public final class MapCommand implements CommandExecutor, TabCompleter {
         if (args.length > 1) {
             String gamemode = args[1].toLowerCase(Locale.ROOT);
             if (!SetupProfile.isKnown(gamemode)) {
-                error(player, "No setup for \"" + gamemode + "\". Known: " + String.join(", ", SetupProfile.gamemodes()));
+                error(
+                        player,
+                        "No setup for \"" + gamemode + "\". Known: " + String.join(", ", SetupProfile.gamemodes()));
                 return;
             }
             // Either a count — "4" picks the first four colours — or the colours themselves, for
@@ -266,8 +457,8 @@ public final class MapCommand implements CommandExecutor, TabCompleter {
             if (SetupProfile.hasTeams(gamemode) && teams.isEmpty()) {
                 error(
                         player,
-                        "How many teams? /map setup " + gamemode + " 4 — or name them: /map setup "
-                                + gamemode + " red blue green yellow");
+                        "How many teams? /map setup " + gamemode + " 4 — or name them: /map setup " + gamemode
+                                + " red blue green yellow");
                 return;
             }
             try {
@@ -294,10 +485,10 @@ public final class MapCommand implements CommandExecutor, TabCompleter {
 
     private void reportProgress(Player player, Path folder, MapSetup.Setup setup) {
         Set<String> marked = PointsOfInterest.read(folder).keySet();
-        Map<String, List<String>> missing =
-                SetupProfile.missingByGroup(setup.gamemode(), setup.teams(), marked);
+        Map<String, List<String>> missing = SetupProfile.missingByGroup(setup.gamemode(), setup.teams(), marked);
         int required = SetupProfile.required(setup.gamemode(), setup.teams()).size();
-        int done = required - SetupProfile.missing(setup.gamemode(), setup.teams(), marked).size();
+        int done = required
+                - SetupProfile.missing(setup.gamemode(), setup.teams(), marked).size();
 
         if (missing.isEmpty()) {
             ok(
@@ -316,8 +507,11 @@ public final class MapCommand implements CommandExecutor, TabCompleter {
                         + " — " + done + " of " + required + " marked. Still missing:");
         missing.forEach((group, things) -> player.sendMessage(Component.text("  " + group + ": ", NamedTextColor.GRAY)
                 .append(Component.text(String.join(", ", things), NamedTextColor.RED))));
-        info(player, "Stand where one belongs and run /ms " + missing.keySet().iterator().next()
-                + " " + missing.values().iterator().next().get(0));
+        info(
+                player,
+                "Stand where one belongs and run /ms "
+                        + missing.keySet().iterator().next() + " "
+                        + missing.values().iterator().next().get(0));
     }
 
     /** `4` means the first four colours; `red blue` means exactly those. */
@@ -371,8 +565,7 @@ public final class MapCommand implements CommandExecutor, TabCompleter {
         info(player, pois.size() + " place" + (pois.size() == 1 ? "" : "s") + " in this map:");
         pois.forEach((poiName, poi) -> player.sendMessage(Component.text("  " + poiName, NamedTextColor.AQUA)
                 .append(Component.text(
-                        String.format(
-                                Locale.ROOT, "  %.0f %.0f %.0f", poi.x(), poi.y(), poi.z()),
+                        String.format(Locale.ROOT, "  %.0f %.0f %.0f", poi.x(), poi.y(), poi.z()),
                         NamedTextColor.DARK_GRAY))));
     }
 
@@ -388,9 +581,7 @@ public final class MapCommand implements CommandExecutor, TabCompleter {
         Location at = player.getLocation();
         Map<String, PointsOfInterest.Poi> pois = PointsOfInterest.read(folder);
         boolean replaced = pois.containsKey(name);
-        pois.put(
-                name,
-                new PointsOfInterest.Poi(at.getX(), at.getY(), at.getZ(), at.getYaw(), at.getPitch()));
+        pois.put(name, new PointsOfInterest.Poi(at.getX(), at.getY(), at.getZ(), at.getYaw(), at.getPitch()));
         try {
             PointsOfInterest.write(folder, pois);
         } catch (IOException e) {
@@ -433,8 +624,7 @@ public final class MapCommand implements CommandExecutor, TabCompleter {
             return;
         }
         // Standing in it is the only honest check that a spawn is not inside a wall.
-        player.teleport(new Location(
-                player.getWorld(), poi.x(), poi.y(), poi.z(), poi.yaw(), poi.pitch()));
+        player.teleport(new Location(player.getWorld(), poi.x(), poi.y(), poi.z(), poi.yaw(), poi.pitch()));
         info(player, "This is " + name + ".");
     }
 

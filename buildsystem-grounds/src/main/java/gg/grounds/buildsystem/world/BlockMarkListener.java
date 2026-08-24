@@ -63,12 +63,12 @@ public final class BlockMarkListener implements Listener {
         if (block == null) {
             return;
         }
-        PendingMarks.Pending armed = pending.take(player.getUniqueId(), player.getWorld().getUID());
+        PendingMarks.Pending armed =
+                pending.take(player.getUniqueId(), player.getWorld().getUID());
         if (armed == null) {
             // Expired, or armed in another world. Saying so beats a click that does nothing.
             player.sendMessage(Component.text(
-                    "That mark expired or belongs to another world. Run the command again.",
-                    NamedTextColor.RED));
+                    "That mark expired or belongs to another world. Run the command again.", NamedTextColor.RED));
             return;
         }
 
@@ -92,8 +92,7 @@ public final class BlockMarkListener implements Listener {
         try {
             PointsOfInterest.write(folder, pois);
         } catch (IOException e) {
-            player.sendMessage(
-                    Component.text("Could not save the places: " + e.getMessage(), NamedTextColor.RED));
+            player.sendMessage(Component.text("Could not save the places: " + e.getMessage(), NamedTextColor.RED));
             return;
         }
 

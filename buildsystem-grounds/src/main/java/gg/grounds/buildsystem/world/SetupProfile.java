@@ -112,7 +112,8 @@ public final class SetupProfile {
 
     /** Whether this gamemode is played in teams. A lobby is not, so it takes no team argument. */
     public static boolean hasTeams(String gamemode) {
-        return !PER_TEAM.getOrDefault(gamemode.toLowerCase(Locale.ROOT), List.of()).isEmpty();
+        return !PER_TEAM.getOrDefault(gamemode.toLowerCase(Locale.ROOT), List.of())
+                .isEmpty();
     }
 
     public static boolean isKnown(String gamemode) {
@@ -153,8 +154,7 @@ public final class SetupProfile {
      * Groups the missing points by their team colour, so the reply can say "red is missing bed,
      * shop" rather than listing twenty names a builder has to sort themselves.
      */
-    public static Map<String, List<String>> missingByGroup(
-            String gamemode, List<String> teams, Set<String> marked) {
+    public static Map<String, List<String>> missingByGroup(String gamemode, List<String> teams, Set<String> marked) {
         Map<String, List<String>> grouped = new LinkedHashMap<>();
         for (String point : missing(gamemode, teams, marked)) {
             int dot = point.indexOf('.');

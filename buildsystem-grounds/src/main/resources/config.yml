@@ -3,6 +3,8 @@
 # the same reason authentication is Keycloak rather than a ServiceAccount token.
 registry:
   base-url: "https://api.grounds.gg"
+  # First-party public map CDN (pin files + bundles). Not the API origin.
+  cdn-base-url: "https://maps.grounds.gg"
 
 oidc:
   issuer-url: "https://account.grounds.gg/realms/grounds"

@@ -75,9 +75,7 @@ class MapPublishValidationTest {
         Path archive = world.resolveSibling("corrupt.tar.zst");
         Files.writeString(archive, "not a zstd archive");
 
-        assertThrows(
-                IOException.class,
-                () -> MapPublishValidation.problem(new WorldArchive.Archive(archive, "", 0)));
+        assertThrows(IOException.class, () -> MapPublishValidation.problem(new WorldArchive.Archive(archive, "", 0)));
     }
 
     @Test

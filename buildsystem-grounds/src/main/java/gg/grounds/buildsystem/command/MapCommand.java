@@ -773,8 +773,19 @@ public final class MapCommand implements CommandExecutor, TabCompleter {
                 }
                 onMainThread(() -> bukkitWorld.setAutoSave(autoSave));
                 info(player, "Uploading " + mib(packed.sizeBytes()) + " to the registry…");
-                MapVersion published =
-                        registry.push(auth, address, packed.file(), packed.sha256(), packed.sizeBytes(), parent, note);
+                MapVersion published = registry.push(
+                        auth,
+                        address,
+                        packed.file(),
+                        packed.sha256(),
+                        packed.sizeBytes(),
+                        parent,
+                        note,
+                        phase -> onMainThread(() -> {
+                            if (phase == RegistryClient.PushPhase.DERIVING) {
+                                info(player, "Upload accepted; deriving " + address + "…");
+                            }
+                        }));
                 onMainThread(() -> {
                     linkQuietly(player, world, address, published.version());
                     ok(
@@ -784,7 +795,7 @@ public final class MapCommand implements CommandExecutor, TabCompleter {
                                     + " v"
                                     + published.version()
                                     + " ("
-                                    + mib(packed.sizeBytes())
+                                    + publicationFacts(published)
                                     + ") as "
                                     + auth.describe()
                                     + ". An admin decides when it goes live.");
@@ -879,6 +890,14 @@ public final class MapCommand implements CommandExecutor, TabCompleter {
 
     private static String mib(long bytes) {
         return String.format(Locale.ROOT, "%.1f MB", bytes / 1024.0 / 1024.0);
+    }
+
+    static String publicationFacts(MapVersion published) {
+        String digest = published.bundleSha256();
+        if (digest == null || digest.isBlank()) {
+            throw new IllegalArgumentException("published version is missing its bundle digest");
+        }
+        return mib(published.sizeBytes()) + ", sha256 " + digest;
     }
 
     private static @Nullable String join(String[] args, int from) {

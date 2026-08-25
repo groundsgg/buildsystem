@@ -773,10 +773,22 @@ public final class MapCommand implements CommandExecutor, TabCompleter {
                 }
                 onMainThread(() -> bukkitWorld.setAutoSave(autoSave));
                 info(player, "Uploading " + mib(packed.sizeBytes()) + " to the registry…");
-                MapVersion published =
-                        registry.push(auth, address, packed.file(), packed.sha256(), packed.sizeBytes(), parent, note);
+                MapVersion published = registry.push(
+                        auth,
+                        address,
+                        packed.file(),
+                        packed.sha256(),
+                        packed.sizeBytes(),
+                        parent,
+                        note,
+                        phase -> onMainThread(() -> {
+                            if (phase == RegistryClient.PushPhase.DERIVING) {
+                                info(player, "Upload accepted; deriving " + address + "…");
+                            }
+                        }));
                 onMainThread(() -> {
                     linkQuietly(player, world, address, published.version());
+                    String digest = published.bundleSha256() == null ? packed.sha256() : published.bundleSha256();
                     ok(
                             player,
                             "Published "
@@ -785,6 +797,8 @@ public final class MapCommand implements CommandExecutor, TabCompleter {
                                     + published.version()
                                     + " ("
                                     + mib(packed.sizeBytes())
+                                    + ", sha256 "
+                                    + digest
                                     + ") as "
                                     + auth.describe()
                                     + ". An admin decides when it goes live.");

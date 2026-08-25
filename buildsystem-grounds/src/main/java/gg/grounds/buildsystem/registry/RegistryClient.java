@@ -34,6 +34,8 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
+import java.util.function.LongSupplier;
 import org.jspecify.annotations.NullMarked;
 import org.jspecify.annotations.Nullable;
 
@@ -60,22 +62,39 @@ public final class RegistryClient {
     /** Refresh a little before expiry, so a long upload never starts on a token about to die. */
     private static final Duration EXPIRY_MARGIN = Duration.ofSeconds(30);
 
-    private final HttpClient http =
-            HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(15)).build();
+    private static final Duration POLL_DEADLINE = Duration.ofMinutes(10);
+
+    private final HttpClient http;
 
     private final String baseUrl;
     private final String tokenUrl;
     private final String clientId;
     private final String clientSecret;
+    private final LongSupplier monotonicNanos;
+    private final Sleeper sleeper;
 
     private @Nullable String token;
     private Instant tokenExpiry = Instant.EPOCH;
 
     public RegistryClient(String baseUrl, String tokenUrl, String clientId, String clientSecret) {
+        this(baseUrl, tokenUrl, clientId, clientSecret, System::nanoTime, RegistryClient::sleep);
+    }
+
+    RegistryClient(
+            String baseUrl,
+            String tokenUrl,
+            String clientId,
+            String clientSecret,
+            LongSupplier monotonicNanos,
+            Sleeper sleeper) {
         this.baseUrl = baseUrl.replaceAll("/+$", "");
         this.tokenUrl = tokenUrl;
         this.clientId = clientId;
         this.clientSecret = clientSecret;
+        this.monotonicNanos = monotonicNanos;
+        this.sleeper = sleeper;
+        this.http =
+                HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(15)).build();
     }
 
     /**
@@ -149,6 +168,19 @@ public final class RegistryClient {
             @Nullable Integer parentVersion,
             @Nullable String note)
             throws RegistryException {
+        return push(auth, address, archive, sha256, sizeBytes, parentVersion, note, phase -> {});
+    }
+
+    public MapVersion push(
+            TokenSource auth,
+            String address,
+            Path archive,
+            String sha256,
+            long sizeBytes,
+            @Nullable Integer parentVersion,
+            @Nullable String note,
+            PushProgress progress)
+            throws RegistryException {
         JsonObject upload = send(request(auth, path(address) + "/uploads").POST(noBody()), "open an upload")
                 .getAsJsonObject();
         String uploadId = upload.get("uploadId").getAsString();
@@ -156,9 +188,9 @@ public final class RegistryClient {
 
         JsonObject commit = new JsonObject();
         commit.addProperty("uploadId", uploadId);
-        // Source and bundle are the same object until a derive Job exists to make them differ.
-        // Recording the same digest for both is honest about that rather than inventing one.
+        // The authored source is addressed independently from the bundle produced by derivation.
         commit.addProperty("sourceSha256", sha256);
+        commit.addProperty("derive", true);
         if (parentVersion != null) {
             commit.addProperty("parentVersion", parentVersion);
         }
@@ -168,14 +200,98 @@ public final class RegistryClient {
         MapVersion committed =
                 MapVersion.from(send(json(auth, versionsPath(address), commit), "commit a version of " + address)
                         .getAsJsonObject());
+        progress.accept(PushPhase.DERIVING);
+        MapVersion published = awaitPublished(auth, address, committed.version());
+        progress.accept(PushPhase.PUBLISHED);
+        return published;
+    }
 
-        JsonObject publish = new JsonObject();
-        publish.addProperty("bundleSha256", sha256);
-        publish.addProperty("sizeBytes", sizeBytes);
-        return MapVersion.from(send(
-                        json(auth, versionsPath(address) + "/" + committed.version() + "/publish", publish),
-                        "publish version " + committed.version())
-                .getAsJsonObject());
+    private MapVersion awaitPublished(TokenSource auth, String address, int version) throws RegistryException {
+        String path = versionsPath(address) + "/" + version;
+        String versionUrl = baseUrl + path;
+        long deadline = monotonicNanos.getAsLong() + POLL_DEADLINE.toNanos();
+        Duration delay = Duration.ofSeconds(1);
+        while (true) {
+            long remaining = deadline - monotonicNanos.getAsLong();
+            if (remaining <= 0) {
+                throw stillProcessing(version, versionUrl);
+            }
+            MapVersion current = MapVersion.from(send(
+                            request(auth, path)
+                                    .timeout(Duration.ofNanos(remaining))
+                                    .GET(),
+                            "check version " + version)
+                    .getAsJsonObject());
+            if (current.isPublished()) {
+                return current;
+            }
+            if ("DERIVE_FAILED".equals(current.state())) {
+                throw new RegistryException("Deriving v" + version + " failed: " + sceneProblems(current));
+            }
+            if ("REJECTED".equals(current.state()) || "TAKEN_DOWN".equals(current.state())) {
+                throw new RegistryException(
+                        "Version v" + version + " is " + current.state().toLowerCase(Locale.ROOT) + ".");
+            }
+            remaining = deadline - monotonicNanos.getAsLong();
+            if (remaining <= 0) {
+                throw stillProcessing(version, versionUrl);
+            }
+            try {
+                sleeper.sleep(Duration.ofNanos(Math.min(delay.toNanos(), remaining)));
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new RegistryException(
+                        "Waiting for v" + version + " was interrupted; processing continues at " + versionUrl, e);
+            }
+            delay = delay.multipliedBy(2);
+            if (delay.compareTo(Duration.ofSeconds(5)) > 0) {
+                delay = Duration.ofSeconds(5);
+            }
+        }
+    }
+
+    private static RegistryException stillProcessing(int version, String versionUrl) {
+        return new RegistryException(
+                "The registry is still processing v" + version + "; processing continues at " + versionUrl + ".");
+    }
+
+    private static String sceneProblems(MapVersion version) {
+        if (version.scene() == null || version.scene().problems().isEmpty()) {
+            return "the registry did not provide scene details";
+        }
+        return version.scene().problems().stream()
+                .map(problem -> List.of(
+                                nonBlank(problem.code()),
+                                nonBlank(problem.path()),
+                                nonBlank(problem.qualifiedIdentity()),
+                                nonBlank(problem.message()))
+                        .stream()
+                        .filter(value -> !value.isEmpty())
+                        .collect(java.util.stream.Collectors.joining(" · ")))
+                .collect(java.util.stream.Collectors.joining("; "));
+    }
+
+    private static String nonBlank(@Nullable String value) {
+        return value == null || value.isBlank() ? "" : value;
+    }
+
+    private static void sleep(Duration duration) throws InterruptedException {
+        Thread.sleep(duration.toMillis(), duration.toNanosPart() % 1_000_000);
+    }
+
+    @FunctionalInterface
+    public interface PushProgress {
+        void accept(PushPhase phase);
+    }
+
+    public enum PushPhase {
+        DERIVING,
+        PUBLISHED
+    }
+
+    @FunctionalInterface
+    interface Sleeper {
+        void sleep(Duration duration) throws InterruptedException;
     }
 
     /** A new map from an existing version. Copies no bytes; the fork is usable immediately. */

@@ -788,7 +788,6 @@ public final class MapCommand implements CommandExecutor, TabCompleter {
                         }));
                 onMainThread(() -> {
                     linkQuietly(player, world, address, published.version());
-                    String digest = published.bundleSha256() == null ? packed.sha256() : published.bundleSha256();
                     ok(
                             player,
                             "Published "
@@ -796,9 +795,7 @@ public final class MapCommand implements CommandExecutor, TabCompleter {
                                     + " v"
                                     + published.version()
                                     + " ("
-                                    + mib(packed.sizeBytes())
-                                    + ", sha256 "
-                                    + digest
+                                    + publicationFacts(published)
                                     + ") as "
                                     + auth.describe()
                                     + ". An admin decides when it goes live.");
@@ -893,6 +890,14 @@ public final class MapCommand implements CommandExecutor, TabCompleter {
 
     private static String mib(long bytes) {
         return String.format(Locale.ROOT, "%.1f MB", bytes / 1024.0 / 1024.0);
+    }
+
+    static String publicationFacts(MapVersion published) {
+        String digest = published.bundleSha256();
+        if (digest == null || digest.isBlank()) {
+            throw new IllegalArgumentException("published version is missing its bundle digest");
+        }
+        return mib(published.sizeBytes()) + ", sha256 " + digest;
     }
 
     private static @Nullable String join(String[] args, int from) {

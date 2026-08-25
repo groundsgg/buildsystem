@@ -111,6 +111,36 @@ class RegistryDerivePollingTest {
                 "__interrupt__");
     }
 
+    @Test
+    void published_version_without_a_bundle_digest_is_a_contract_failure() throws Exception {
+        AtomicLong now = new AtomicLong();
+        HttpServer server = server(exchange -> {
+            String path = exchange.getRequestURI().getPath();
+            if (path.endsWith("/uploads")) {
+                json(exchange, 200, "{\"uploadId\":\"u\",\"url\":\"" + base(exchange) + "/archive\"}");
+            } else if (path.equals("/archive")) {
+                exchange.sendResponseHeaders(200, -1);
+                exchange.close();
+            } else if (path.endsWith("/versions") && exchange.getRequestMethod().equals("POST")) {
+                json(exchange, 200, "{\"version\":7,\"state\":\"DRAFT\",\"sizeBytes\":0}");
+            } else if (path.endsWith("/versions/7")) {
+                json(exchange, 200, "{\"version\":7,\"state\":\"PUBLISHED\",\"sizeBytes\":9}");
+            } else {
+                throw new AssertionError("unexpected request: " + path);
+            }
+        });
+        server.start();
+        try {
+            RegistryException failure = assertThrows(
+                    RegistryException.class,
+                    () -> client(server, now, duration -> now.addAndGet(duration.toNanos()))
+                            .push(() -> "token", "bedwars/crater", archive(), "source", 5, null, null));
+            assertTrue(failure.getMessage().contains("published v7 without a bundle digest"), failure.getMessage());
+        } finally {
+            server.stop(0);
+        }
+    }
+
     private void assertFailure(String state, ThrowingSleeper sleeper, String... required) throws Exception {
         AtomicLong now = new AtomicLong();
         HttpServer server = server(exchange -> {

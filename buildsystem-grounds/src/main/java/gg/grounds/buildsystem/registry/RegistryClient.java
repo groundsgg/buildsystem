@@ -223,6 +223,10 @@ public final class RegistryClient {
                             "check version " + version)
                     .getAsJsonObject());
             if (current.isPublished()) {
+                if (current.bundleSha256() == null || current.bundleSha256().isBlank()) {
+                    throw new RegistryException(
+                            "The registry returned published v" + version + " without a bundle digest.");
+                }
                 return current;
             }
             if ("DERIVE_FAILED".equals(current.state())) {

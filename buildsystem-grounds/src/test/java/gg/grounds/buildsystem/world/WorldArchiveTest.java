@@ -26,6 +26,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.github.luben.zstd.ZstdInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -131,6 +132,16 @@ class WorldArchiveTest {
     }
 
     @Test
+    void keeps_scene_json_at_the_archive_root_without_changing_its_bytes() throws IOException {
+        Path world = world("region/r.0.0.mca", "scene.json");
+        WorldArchive.Archive archive = WorldArchive.pack(world, tmp.resolve("scene.tar.zst"));
+
+        assertTrue(entriesOf(archive.file()).contains("scene.json"));
+        assertEquals(
+                "contents of scene.json", new String(entryBytes(archive.file(), "scene.json"), StandardCharsets.UTF_8));
+    }
+
+    @Test
     void unpack_round_trips_a_packed_world() throws IOException {
         Path world = world("region/r.0.0.mca", "level.dat", "data/raids.dat");
         WorldArchive.Archive packed = WorldArchive.pack(world, tmp.resolve("round.tar.zst"));
@@ -175,5 +186,19 @@ class WorldArchiveTest {
             }
         }
         return names;
+    }
+
+    private static byte[] entryBytes(Path archive, String wanted) throws IOException {
+        try (InputStream in = Files.newInputStream(archive);
+                ZstdInputStream zstd = new ZstdInputStream(in);
+                TarArchiveInputStream tar = new TarArchiveInputStream(zstd)) {
+            TarArchiveEntry entry;
+            while ((entry = tar.getNextEntry()) != null) {
+                if (entry.getName().equals(wanted)) {
+                    return tar.readAllBytes();
+                }
+            }
+        }
+        throw new IOException("missing archive entry: " + wanted);
     }
 }

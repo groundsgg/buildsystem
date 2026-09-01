@@ -4,6 +4,8 @@ FROM eclipse-temurin:25-jdk-alpine AS build
 
 WORKDIR /workspace
 
+ARG GITHUB_USER
+
 COPY gradlew gradle.properties settings.gradle.kts build.gradle.kts ./
 COPY gradle ./gradle
 COPY buildSrc ./buildSrc
@@ -12,6 +14,8 @@ COPY buildsystem-core ./buildsystem-core
 COPY buildsystem-grounds ./buildsystem-grounds
 
 RUN --mount=type=cache,target=/root/.gradle \
+    --mount=type=secret,id=github_token,required=true \
+    GITHUB_ACTOR="$GITHUB_USER" GITHUB_TOKEN="$(cat /run/secrets/github_token)" \
     ./gradlew --no-daemon clean :buildsystem-core:shadowJar :buildsystem-grounds:shadowJar && \
     test "$(find build/libs -maxdepth 1 -type f -name 'BuildSystem-*.jar' | wc -l)" -eq 1 && \
     test "$(find build/libs -maxdepth 1 -type f -name 'GroundsMaps-*.jar' | wc -l)" -eq 1

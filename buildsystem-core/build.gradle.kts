@@ -12,34 +12,6 @@ plugins {
 
 project.description = "Core"
 
-repositories {
-    maven {
-        name = "AuthLib"
-        url = uri("https://libraries.minecraft.net/")
-    }
-    maven {
-        name = "EngineHub"
-        url = uri("https://maven.enginehub.org/repo/")
-    }
-    maven {
-        name = "PlaceholderAPI"
-        url = uri("https://repo.extendedclip.com/content/repositories/placeholderapi/")
-    }
-    maven {
-        name = "PaperMC"
-        url = uri("https://repo.papermc.io/repository/maven-public/")
-    }
-    maven {
-        name = "Modrinth"
-        url = uri("https://api.modrinth.com/maven")
-    }
-    modrinthMavenWorkaround(
-        "axiom-paper-plugin",
-        "5.0.4+26.1",
-        "AxiomPaperPlugin-5.0.4-for-MC26.1.jar"
-    )
-}
-
 dependencies {
     api(project(":buildsystem-api"))
 

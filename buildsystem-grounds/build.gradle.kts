@@ -11,13 +11,6 @@ plugins {
 
 project.description = "Grounds map registry integration"
 
-repositories {
-    maven {
-        name = "PaperMC"
-        url = uri("https://repo.papermc.io/repository/maven-public/")
-    }
-}
-
 dependencies {
     // Only the published API, never buildsystem-core. This module is a separate plugin that
     // talks to BuildSystem the way any third party would, which is what keeps an upstream
@@ -25,6 +18,7 @@ dependencies {
     compileOnly(project(":buildsystem-api"))
     compileOnly(libs.paperapi)
     compileOnlyApi(libs.jspecify)
+    compileOnly("gg.grounds:plugin-scene-editor-common:0.1.0") { isTransitive = false }
 
     // The bundle format the registry addresses by digest: `bundle/sha256/<ab>/<sha>.tar.zst`.
     // Region files compress far better under zstd than deflate, and the key already names it.
@@ -34,12 +28,24 @@ dependencies {
     // The server API is compileOnly, so its Gson is absent at test runtime. The MockBukkit-matched
     // version, matching buildsystem-core — see libs.versions.toml.
     testImplementation(libs.papertest)
+    testImplementation(project(":buildsystem-api"))
+    testImplementation("gg.grounds:plugin-scene-editor-common:0.1.0") { isTransitive = false }
     testImplementation(platform(libs.junit.bom))
     testImplementation(libs.junit.jupiter)
     testRuntimeOnly(libs.junit.platform.launcher)
 }
 
 tasks.withType<Test> { useJUnitPlatform() }
+
+val noEditorLinkageTest = tasks.register<JavaExec>("noEditorLinkageTest") {
+    dependsOn(tasks.named("testClasses"))
+    classpath = sourceSets.test.get().runtimeClasspath.filter {
+        !it.name.startsWith("plugin-scene-editor-common-")
+    }
+    mainClass.set("gg.grounds.buildsystem.command.MapCommandNoEditorLinkageMain")
+}
+
+tasks.named<Test>("test") { dependsOn(noEditorLinkageTest) }
 
 // plugin.yml is generated, the same way buildsystem-core generates its own — a hand-written
 // one with a ${version} placeholder needs resource filtering, which the configuration cache
@@ -55,6 +61,7 @@ bukkit {
     // Hard: every command reads a BuildWorld, so without BuildSystem there is nothing this
     // plugin could do except fail once per command.
     depend = listOf("BuildSystem")
+    softDepend = listOf("GroundsSceneEditor")
 
     commands {
         register("map") {
@@ -105,12 +112,19 @@ tasks.named<ShadowJar>("shadowJar") {
     // which is the worst possible moment to find out. Check the jar instead.
     doLast {
         val jar = archiveFile.get().asFile
-        val intact = ZipFile(jar).use { zip ->
-            zip.stream().anyMatch { it.name.startsWith("com/github/luben/zstd/") }
-        }
-        check(intact) {
-            "zstd-jni is missing or relocated in $jar. Its native code registers methods under the" +
-                " original package name, so renaming the classes leaves them unfindable."
+        ZipFile(jar).use { zip ->
+            val intact = zip.stream().anyMatch { it.name.startsWith("com/github/luben/zstd/") }
+            check(intact) {
+                "zstd-jni is missing or relocated in $jar. Its native code registers methods under the" +
+                    " original package name, so renaming the classes leaves them unfindable."
+            }
+            val descriptor = zip.getInputStream(zip.getEntry("plugin.yml")).bufferedReader().readText()
+            check("softdepend:\n  - GroundsSceneEditor" in descriptor) {
+                "GroundsMaps must soft-depend on GroundsSceneEditor in $jar."
+            }
+            check(zip.getEntry("gg/grounds/scene/editor/SceneEditStatus.class") == null) {
+                "GroundsMaps must not bundle the compile-only SceneEditStatus API in $jar."
+            }
         }
     }
 }

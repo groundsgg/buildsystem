@@ -88,6 +88,7 @@ public final class MapCommand implements CommandExecutor, TabCompleter {
     private final MapLinks links;
     private final String cdnBaseUrl;
     private final MapPullResolver pullResolver = new MapPullResolver();
+    private final SceneEditorPushGuard sceneEditorPushGuard;
     /** Who has a sign-in link outstanding, so a second one cannot orphan the first. */
     private final java.util.Set<java.util.UUID> pendingLogins = java.util.concurrent.ConcurrentHashMap.newKeySet();
 
@@ -98,12 +99,34 @@ public final class MapCommand implements CommandExecutor, TabCompleter {
             PlayerLogins logins,
             MapLinks links,
             String cdnBaseUrl) {
+        this(
+                plugin,
+                registry,
+                deviceFlow,
+                logins,
+                links,
+                cdnBaseUrl,
+                new SceneEditorPushGuard(
+                        plugin.getServer().getPluginManager(),
+                        plugin.getServer().getServicesManager(),
+                        plugin.getLogger()));
+    }
+
+    MapCommand(
+            JavaPlugin plugin,
+            RegistryClient registry,
+            DeviceFlow deviceFlow,
+            PlayerLogins logins,
+            MapLinks links,
+            String cdnBaseUrl,
+            SceneEditorPushGuard sceneEditorPushGuard) {
         this.plugin = plugin;
         this.registry = registry;
         this.deviceFlow = deviceFlow;
         this.logins = logins;
         this.links = links;
         this.cdnBaseUrl = cdnBaseUrl;
+        this.sceneEditorPushGuard = sceneEditorPushGuard;
     }
 
     /**
@@ -714,6 +737,17 @@ public final class MapCommand implements CommandExecutor, TabCompleter {
     }
 
     private void push(Player player, BuildWorld world, String[] args) {
+        // This command path runs on the server thread. Check the editor before saving or making
+        // any archive, link, or registry side effect.
+        World bukkitWorld = world.getWorld().orElse(null);
+        if (bukkitWorld == null) {
+            error(player, "The world is not loaded.");
+            return;
+        }
+        if (!sceneEditorPushGuard.allowsPush(bukkitWorld.getUID())) {
+            error(player, "You have unsaved scene edits. Run /scene save before /map push.");
+            return;
+        }
         // `/map push bedwars/crater` is what a builder types for a world that has no map yet, so
         // it means what it looks like: link it, then push. Once a world is linked the same token
         // is a note, because repeating the address every time would be noise.
@@ -732,11 +766,6 @@ public final class MapCommand implements CommandExecutor, TabCompleter {
             return;
         }
         final String address = resolved;
-        World bukkitWorld = world.getWorld().orElse(null);
-        if (bukkitWorld == null) {
-            error(player, "The world is not loaded.");
-            return;
-        }
         Path folder = bukkitWorld.getWorldFolder().toPath();
         String problem = MapPublishValidation.problem(folder);
         if (problem != null) {

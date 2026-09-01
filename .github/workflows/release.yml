@@ -9,6 +9,7 @@ on:
 
 permissions:
   contents: write
+  packages: read
 
 jobs:
   release:
@@ -34,6 +35,9 @@ jobs:
       # -Pversion rather than an edit to gradle.properties: that file belongs to upstream, and
       # every line of it we change is a line a future merge has to argue about.
       - name: Build
+        env:
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: ./gradlew clean build -Pversion=${{ steps.version.outputs.version }}
 
       - name: Release

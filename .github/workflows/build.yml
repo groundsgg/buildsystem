@@ -8,6 +8,9 @@ jobs:
     # for Gradle jobs — Blacksmith bills per full minute and linearly in vCPU, so a wider
     # runner only pays off if it actually shortens wall-clock.
     runs-on: blacksmith-2vcpu-ubuntu-2404-arm
+    permissions:
+      contents: read
+      packages: read
     strategy:
       matrix:
         java: [ 25 ]
@@ -27,4 +30,7 @@ jobs:
         uses: gradle/actions/setup-gradle@v6
 
       - name: Build with Gradle
+        env:
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: ./gradlew clean build

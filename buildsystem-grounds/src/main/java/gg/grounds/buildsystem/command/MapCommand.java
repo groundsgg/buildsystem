@@ -375,7 +375,9 @@ public final class MapCommand implements CommandExecutor, TabCompleter {
         try {
             var config = plugin.getConfig();
             downloader = new ImportDownloader(
-                    new ImportUrlPolicy(config.getStringList("import.allowed-hosts")),
+                    new ImportUrlPolicy(ImportUrlPolicy.allowedHosts(
+                            System.getenv(ImportUrlPolicy.ALLOWED_HOSTS_ENV),
+                            config.getStringList("import.allowed-hosts"))),
                     config.getLong("import.max-download-mib", 512) * 1024 * 1024);
             limits = new WorldImportArchive.Limits(
                     config.getLong("import.max-unpacked-mib", 2048) * 1024 * 1024,

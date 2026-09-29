@@ -25,9 +25,11 @@ import java.net.InetAddress;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.UnknownHostException;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
 import org.jspecify.annotations.NullMarked;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Decides whether a URL may be fetched by {@code /map import}.
@@ -50,8 +52,33 @@ public final class ImportUrlPolicy {
         InetAddress[] resolve(String host) throws UnknownHostException;
     }
 
+    /**
+     * Comma-separated hosts that replace {@code import.allowed-hosts}. An environment variable
+     * because config.yml is baked into the jar and the stage build server has no volume to edit it
+     * on — the deployment is the only place a per-environment value can live.
+     */
+    public static final String ALLOWED_HOSTS_ENV = "GROUNDS_MAPS_IMPORT_ALLOWED_HOSTS";
+
     private final List<String> allowedHosts;
     private final Resolver resolver;
+
+    /**
+     * The allowlist in force: the environment variable when it names at least one host, otherwise
+     * the configured list. Replacing rather than merging, so a deployment can narrow what the jar
+     * ships and not only widen it.
+     */
+    public static List<String> allowedHosts(@Nullable String fromEnv, List<String> configured) {
+        if (fromEnv != null) {
+            List<String> hosts = Arrays.stream(fromEnv.split(","))
+                    .map(String::trim)
+                    .filter(host -> !host.isEmpty())
+                    .toList();
+            if (!hosts.isEmpty()) {
+                return hosts;
+            }
+        }
+        return configured;
+    }
 
     /** @param allowedHosts lowercase host names; empty allows any public host */
     public ImportUrlPolicy(List<String> allowedHosts) {

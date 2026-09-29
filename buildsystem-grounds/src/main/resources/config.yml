@@ -21,6 +21,8 @@ oidc:
 import:
   # Hosts an import may come from; a subdomain of a listed host counts. Empty allows any host
   # whose every address is public — internal and private addresses are refused either way.
+  # GROUNDS_MAPS_IMPORT_ALLOWED_HOSTS (comma-separated) replaces this list when it names a host,
+  # which is how a deployment sets it: this file ships inside the jar.
   allowed-hosts: []
   # The download itself, and what it may unpack to. A zip of a few megabytes can expand to
   # gigabytes, so the second limit is the one that protects the disk.

@@ -193,7 +193,7 @@ The download is treated as hostile at every step, because it is:
 | Layer | What it stops |
 |---|---|
 | `grounds.maps.import` (op by default) **and** a `/map login` | Anonymous imports. The console logs who imported what: Keycloak name, player, URL without its query string, sha256, files kept |
-| https only, no credentials in the URL, port 443, optional `import.allowed-hosts` | Plain-text downloads, and sources nobody chose |
+| https only, no credentials in the URL, port 443, optional allowlist: `GROUNDS_MAPS_IMPORT_ALLOWED_HOSTS` (comma-separated, replaces) or `import.allowed-hosts` | Plain-text downloads, and sources nobody chose |
 | every address of the host must be public; redirects are followed by hand and each hop is checked again, at most three | Using the build server to reach internal addresses: `10.x`, `100.64/10`, `169.254.169.254`, `fc00::/7`, IPv4-mapped forms |
 | `import.max-download-mib` (512), checked against Content-Length **and** the bytes received | A download that fills the disk |
 | `import.max-unpacked-mib` (2048) and `import.max-entries` (100 000) | Zip bombs |
@@ -210,7 +210,9 @@ answers with a public address to the check and a private one to the connection (
 is not caught by the plugin. No network layer closes it today: the Proxmox clusters run Flannel,
 which does not enforce NetworkPolicy, so an egress policy for the build server would be accepted
 and ignored. Until the CNI enforces policy, the mitigation is `import.allowed-hosts` — with a short
-allowlist an attacker would first have to control DNS for one of those hosts.
+allowlist an attacker would first have to control DNS for one of those hosts. Set it on the
+deployment with `GROUNDS_MAPS_IMPORT_ALLOWED_HOSTS=github.com,objects.githubusercontent.com`;
+the variable replaces the configured list rather than adding to it.
 
 ## Setting it up
 

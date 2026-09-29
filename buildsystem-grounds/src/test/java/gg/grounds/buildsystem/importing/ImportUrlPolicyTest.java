@@ -19,6 +19,7 @@
 package gg.grounds.buildsystem.importing;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -30,6 +31,7 @@ import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.NullSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
 class ImportUrlPolicyTest {
@@ -91,6 +93,21 @@ class ImportUrlPolicyTest {
         allowlisted.check("https://maps.example.com/a.zip");
         allowlisted.check("https://cdn.maps.example.com/a.zip");
         assertThrows(RegistryException.class, () -> allowlisted.check("https://other.org/a.zip"));
+    }
+
+    /** The deployment has to be able to narrow what the jar ships, so the variable replaces the list. */
+    @Test
+    void environment_allowlist_replaces_the_configured_one() {
+        assertEquals(
+                List.of("maps.example.com", "github.com"),
+                ImportUrlPolicy.allowedHosts(" maps.example.com, ,github.com ", List.of("other.org")));
+    }
+
+    @ParameterizedTest
+    @NullSource
+    @ValueSource(strings = {"", "  ", " , ,"})
+    void unset_or_empty_environment_keeps_the_configured_allowlist(String fromEnv) {
+        assertEquals(List.of("other.org"), ImportUrlPolicy.allowedHosts(fromEnv, List.of("other.org")));
     }
 
     @ParameterizedTest

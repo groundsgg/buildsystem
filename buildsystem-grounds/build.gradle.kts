@@ -66,7 +66,7 @@ bukkit {
     commands {
         register("map") {
             description = "Publish, fork, pull and inspect maps on the build server"
-            usage = "/<command> [login|logout|status|push|pull|fork|versions|link|poi|setup]"
+            usage = "/<command> [login|logout|status|push|pull|import|fork|versions|link|poi|setup]"
             permission = "grounds.map"
         }
         register("ms") {
@@ -87,6 +87,10 @@ bukkit {
         }
         register("grounds.maps.pull.force") {
             description = "Overwrite an existing world with /map pull -f"
+            default = net.minecrell.pluginyml.bukkit.BukkitPluginDescription.Permission.Default.OP
+        }
+        register("grounds.maps.import") {
+            description = "Import a world from an https URL with /map import"
             default = net.minecrell.pluginyml.bukkit.BukkitPluginDescription.Permission.Default.OP
         }
     }

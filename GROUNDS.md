@@ -45,6 +45,7 @@ One plugin, `GroundsMaps`, depending on `BuildSystem`. It gives builders one com
 | `/map versions` | The last ten versions and their state |
 | `/map poi set <name>` | Marks where you stand, facing where you look |
 | `/map poi list` / `tp <name>` / `remove <name>` | See them, stand in one, drop one |
+| `/map import <https-url> <world> [sha256=<hex>]` | A world someone else made, from a `.zip` or `.tar.zst`, as a new build world |
 
 Deliberately no digests, no version numbers to type, no bucket names. `/map push bedwars/crater`
 links a fresh world and pushes it in one go; after that `/map push` alone is enough, and anything
@@ -175,6 +176,38 @@ migrated. Nothing is moved after loading — a world stays where it is.
 That layout has a sharp edge: the **main** world's folder physically contains every other world.
 Packing it without excluding a direct `dimensions` child would put the whole build server into one
 map's bundle, which is why upstream excludes the same directory when it zips a world.
+
+### Importing a world from a URL
+
+```
+/map login
+/map import https://example.com/crater.zip crater
+/map import https://example.com/crater.zip crater sha256=3f9a…   # refuse anything but those bytes
+```
+
+The world arrives as a **new** build world; an import never replaces one. It is a place to start
+from, not a map yet: `/map setup`, `/ms` and `/map push` still make it one.
+
+The download is treated as hostile at every step, because it is:
+
+| Layer | What it stops |
+|---|---|
+| `grounds.maps.import` (op by default) **and** a `/map login` | Anonymous imports. The console logs who imported what: Keycloak name, player, URL without its query string, sha256, files kept |
+| https only, no credentials in the URL, port 443, optional `import.allowed-hosts` | Plain-text downloads, and sources nobody chose |
+| every address of the host must be public; redirects are followed by hand and each hop is checked again, at most three | Using the build server to reach internal addresses: `10.x`, `100.64/10`, `169.254.169.254`, `fc00::/7`, IPv4-mapped forms |
+| `import.max-download-mib` (512), checked against Content-Length **and** the bytes received | A download that fills the disk |
+| `import.max-unpacked-mib` (2048) and `import.max-entries` (100 000) | Zip bombs |
+| An **allowlist** of files: `level.dat`, `region|entities|poi/r.X.Z.mca`, `data/*.dat`, `grounds/{setup,pois}.json`, `scene.json`, `paper-world.yml` | **Datapacks**: a `#minecraft:load` function runs with operator rights when the world loads. They, and everything else, are dropped and counted |
+| No links, no absolute or `..` paths (one such entry fails the whole archive) | Writing outside the staging folder |
+| One import at a time per server | Two large unpacks at once |
+
+Archives are recognised by their first bytes, not the file name. A wrapper folder is fine; the
+world root is the shallowest folder holding `region/r.X.Z.mca`, so a full save imports its
+overworld and leaves nether and end behind. Two worlds side by side are refused rather than guessed.
+
+**Residual risk:** the HTTP client resolves the host again when it connects, so a host that
+answers with a public address to the check and a private one to the connection (DNS rebinding)
+is not caught by the plugin. The build server's egress network policy is the layer that closes it.
 
 ## Setting it up
 

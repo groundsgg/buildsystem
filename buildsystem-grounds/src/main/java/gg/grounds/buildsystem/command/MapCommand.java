@@ -20,6 +20,9 @@ package gg.grounds.buildsystem.command;
 
 import de.eintosti.buildsystem.api.BuildSystemProvider;
 import de.eintosti.buildsystem.api.world.BuildWorld;
+import gg.grounds.buildsystem.importing.ImportDownloader;
+import gg.grounds.buildsystem.importing.ImportUrlPolicy;
+import gg.grounds.buildsystem.importing.WorldImportArchive;
 import gg.grounds.buildsystem.registry.BundleRef;
 import gg.grounds.buildsystem.registry.DeviceFlow;
 import gg.grounds.buildsystem.registry.MapPullResolver;
@@ -39,6 +42,7 @@ import gg.grounds.buildsystem.world.WorldArchive;
 import gg.grounds.buildsystem.world.WorldFolders;
 import java.io.File;
 import java.io.IOException;
+import java.net.URI;
 import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -76,10 +80,20 @@ import org.jspecify.annotations.Nullable;
 public final class MapCommand implements CommandExecutor, TabCompleter {
 
     private static final List<String> SUBCOMMANDS =
-            List.of("push", "pull", "fork", "versions", "link", "status", "login", "logout", "poi", "setup");
+            List.of("push", "pull", "import", "fork", "versions", "link", "status", "login", "logout", "poi", "setup");
 
     private static final String PERM_PULL = "grounds.maps.pull";
     private static final String PERM_PULL_FORCE = "grounds.maps.pull.force";
+    private static final String PERM_IMPORT = "grounds.maps.import";
+
+    /** A world name BuildSystem and every file system accept, and nothing that looks like a path. */
+    private static final java.util.regex.Pattern IMPORT_WORLD_NAME =
+            java.util.regex.Pattern.compile("^[A-Za-z0-9_-]{1,32}$");
+
+    private static final java.util.regex.Pattern SHA256 = java.util.regex.Pattern.compile("^[0-9a-fA-F]{64}$");
+
+    /** One import at a time: each can hold hundreds of megabytes on disk while it unpacks. */
+    private final java.util.concurrent.atomic.AtomicBoolean importing = new java.util.concurrent.atomic.AtomicBoolean();
 
     private final JavaPlugin plugin;
     private final RegistryClient registry;
@@ -193,6 +207,11 @@ public final class MapCommand implements CommandExecutor, TabCompleter {
             pull(player, args);
             return true;
         }
+        // Import creates a world, so like pull it cannot require standing in one.
+        if (early.equals("import")) {
+            importWorld(player, args);
+            return true;
+        }
 
         BuildWorld world =
                 BuildSystemProvider.get().getWorldService().getWorldStorage().getBuildWorld(player.getWorld());
@@ -302,6 +321,124 @@ public final class MapCommand implements CommandExecutor, TabCompleter {
     }
 
     /**
+     * {@code /map import <https-url> <world> [sha256=<hex>]}: a world someone else made, from a
+     * URL, as a new build world.
+     *
+     * <p>Every layer assumes the download is hostile: {@link ImportUrlPolicy} keeps the fetch off
+     * internal addresses, {@link ImportDownloader} caps the size and re-checks every redirect, and
+     * {@link WorldImportArchive} writes only the files a map is made of — never a datapack, which
+     * would run its load functions with operator rights. Imports need a signed-in builder so the
+     * console log names a person, and they only ever create a world, never replace one.
+     */
+    private void importWorld(Player player, String[] args) {
+        if (!player.hasPermission(PERM_IMPORT)) {
+            error(player, "You need " + PERM_IMPORT + " to import maps.");
+            return;
+        }
+        String signedIn = logins.nameOf(player.getUniqueId());
+        if (signedIn == null) {
+            error(player, "Imports are recorded under your name. /map login first.");
+            return;
+        }
+        if (args.length < 3 || args.length > 4) {
+            error(player, "Usage: /map import <https-url> <world-name> [sha256=<hex>]");
+            return;
+        }
+        String url = args[1];
+        String worldName = args[2];
+        if (!IMPORT_WORLD_NAME.matcher(worldName).matches()) {
+            error(player, "World names are 1–32 letters, digits, _ or -.");
+            return;
+        }
+        String expectedSha = null;
+        if (args.length == 4) {
+            String given = args[3].startsWith("sha256=") ? args[3].substring("sha256=".length()) : "";
+            if (!SHA256.matcher(given).matches()) {
+                error(player, "The last argument must be sha256=<64 hex characters>.");
+                return;
+            }
+            expectedSha = given.toLowerCase(Locale.ROOT);
+        }
+        if (worldExists(worldName)) {
+            error(
+                    player,
+                    "World \"" + worldName + "\" already exists. Imports never replace a world; pick another name.");
+            return;
+        }
+        if (!importing.compareAndSet(false, true)) {
+            error(player, "Another import is running on this server. Try again when it is done.");
+            return;
+        }
+
+        ImportDownloader downloader;
+        WorldImportArchive.Limits limits;
+        try {
+            var config = plugin.getConfig();
+            downloader = new ImportDownloader(
+                    new ImportUrlPolicy(config.getStringList("import.allowed-hosts")),
+                    config.getLong("import.max-download-mib", 512) * 1024 * 1024);
+            limits = new WorldImportArchive.Limits(
+                    config.getLong("import.max-unpacked-mib", 2048) * 1024 * 1024,
+                    config.getInt("import.max-entries", 100_000));
+        } catch (RuntimeException e) {
+            importing.set(false);
+            throw e;
+        }
+        final String sha = expectedSha;
+        info(player, "Downloading…");
+        offMainThread(player, () -> {
+            Path archive = Files.createTempFile("grounds-import-", ".bin");
+            Path staging = Files.createTempDirectory("grounds-import-world-");
+            boolean handedOver = false;
+            try {
+                ImportDownloader.Download download = downloader.fetch(url, archive, sha);
+                info(player, "Unpacking " + mib(download.sizeBytes()) + "…");
+                WorldImportArchive.Result result = WorldImportArchive.extract(archive, staging, limits);
+                URI from = download.finalUri();
+                // No query string in the log: a signed download URL carries its credential there.
+                plugin.getLogger()
+                        .info("map import by " + signedIn + " (" + player.getName() + ") from " + from.getScheme()
+                                + "://" + from.getHost() + from.getRawPath() + " sha256 " + download.sha256()
+                                + " -> world " + worldName + " (" + result.filesWritten() + " files, "
+                                + result.skipped() + " skipped"
+                                + (result.droppedDatapacks() ? ", datapacks dropped" : "")
+                                + ")");
+                if (result.droppedDatapacks()) {
+                    info(player, "Left out the world's datapacks: they could run commands on this server.");
+                }
+                handedOver = true;
+                onMainThread(() -> {
+                    if (worldExists(worldName)) {
+                        error(player, "World \"" + worldName + "\" appeared while downloading. Nothing was replaced.");
+                        deleteTreeQuietly(staging);
+                        return;
+                    }
+                    installWorld(
+                            player,
+                            worldName,
+                            staging,
+                            imported -> ok(
+                                    player,
+                                    "Imported \"" + worldName + "\" (sha256 "
+                                            + download.sha256().substring(0, 12)
+                                            + "…). Set it up with /map setup, then /map push <namespace/name>."));
+                });
+            } finally {
+                importing.set(false);
+                deleteQuietly(archive);
+                if (!handedOver) {
+                    deleteTreeQuietly(staging);
+                }
+            }
+        });
+    }
+
+    private static boolean worldExists(String worldName) {
+        return BuildSystemProvider.get().getWorldService().getWorldStorage().getBuildWorld(worldName) != null
+                || WorldFolders.isImportableWorldDirectory(WorldFolders.forName(worldName));
+    }
+
+    /**
      * Install a world that was already unpacked into {@code staging}. The live world is only
      * removed after staging succeeded, so a bad bundle cannot wipe a builder's work.
      */
@@ -343,6 +480,15 @@ public final class MapCommand implements CommandExecutor, TabCompleter {
     }
 
     private void promoteStaging(Player player, String worldName, String address, BundleRef bundle, Path staging) {
+        installWorld(player, worldName, staging, imported -> {
+            linkQuietly(player, imported, address, bundle.version());
+            ok(player, "Pulled " + address + " v" + bundle.version() + " as world \"" + worldName + "\".");
+        });
+    }
+
+    /** Moves an unpacked world into place and hands it to BuildSystem. */
+    private void installWorld(
+            Player player, String worldName, Path staging, java.util.function.Consumer<BuildWorld> onImported) {
         offMainThread(player, () -> {
             Path target = WorldFolders.forName(worldName).toPath();
             try {
@@ -371,13 +517,10 @@ public final class MapCommand implements CommandExecutor, TabCompleter {
                         .notify(player)
                         .build();
                 if (imported == null) {
-                    error(
-                            player,
-                            "Downloaded " + address + ", but BuildSystem could not import \"" + worldName + "\".");
+                    error(player, "Downloaded the world, but BuildSystem could not import \"" + worldName + "\".");
                     return;
                 }
-                linkQuietly(player, imported, address, bundle.version());
-                ok(player, "Pulled " + address + " v" + bundle.version() + " as world \"" + worldName + "\".");
+                onImported.accept(imported);
             });
         });
     }

@@ -4,10 +4,9 @@ on: [ push, pull_request ]
 
 jobs:
   build:
-    # Blacksmith, not GitHub's runners: the whole org builds here. Two vCPU is the house size
-    # for Gradle jobs — Blacksmith bills per full minute and linearly in vCPU, so a wider
-    # runner only pays off if it actually shortens wall-clock.
-    runs-on: blacksmith-2vcpu-ubuntu-2404-arm
+    # GitHub's hosted runner: this repository is public, so it costs nothing, and the Blacksmith
+    # label no longer picks jobs up (runs queued indefinitely from 2026-09).
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
       packages: read

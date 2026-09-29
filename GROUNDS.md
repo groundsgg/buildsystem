@@ -207,7 +207,10 @@ overworld and leaves nether and end behind. Two worlds side by side are refused 
 
 **Residual risk:** the HTTP client resolves the host again when it connects, so a host that
 answers with a public address to the check and a private one to the connection (DNS rebinding)
-is not caught by the plugin. The build server's egress network policy is the layer that closes it.
+is not caught by the plugin. No network layer closes it today: the Proxmox clusters run Flannel,
+which does not enforce NetworkPolicy, so an egress policy for the build server would be accepted
+and ignored. Until the CNI enforces policy, the mitigation is `import.allowed-hosts` — with a short
+allowlist an attacker would first have to control DNS for one of those hosts.
 
 ## Setting it up
 

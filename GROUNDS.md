@@ -309,3 +309,19 @@ a token minted by one cluster does not verify against the other's JWKS.
 in which a tick could write a region file mid-archive. The complete fix is to unload the world, pack
 it, and load it back; that is more disruptive to a builder standing in it, and worth doing once
 pushes are frequent enough for the risk to be real.
+
+## Release ownership
+
+Release Please owns Grounds version bumps, release PRs, tags and GitHub releases.
+The initial manifest and `version.txt` record the existing
+`v4.0.0-grounds.16` release, not a new version. The bootstrap SHA is that tag's
+commit, so the first release PR includes the subsequent Grounds changes.
+Release Please calculates the next version from conventional commits; do not
+create tags or releases manually.
+
+The organization `RELEASE_PLEASE_TOKEN` must remain available to this repository.
+Unlike `GITHUB_TOKEN`, it allows release-PR checks and the existing tag-triggered
+`release.yml` artifact build to run. After a reviewed release PR is merged,
+`release.yml` builds with the tag version and attaches both `BuildSystem` and
+`GroundsMaps` JARs. Upstream `gradle.properties` and the Sonatype workflow remain
+unchanged. Release publication does not deploy or restart the build server.

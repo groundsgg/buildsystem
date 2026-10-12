@@ -1,11 +1,11 @@
 name: Release
 
 # Ours, not upstream's. `publish.yml` next door pushes upstream's coordinates to Sonatype and is
-# fenced to their owner id, so it can never fire here — this builds the two jars a build server
-# actually installs and attaches them to a GitHub release.
+# fenced to their owner id, so it can never fire here. Release Please creates the release;
+# this workflow only attaches the two jars a build server actually installs.
 on:
-  push:
-    tags: [ 'v*' ]
+  release:
+    types: [published]
 
 permissions:
   contents: write
@@ -13,11 +13,14 @@ permissions:
 
 jobs:
   release:
+    if: startsWith(github.event.release.tag_name, 'v')
     runs-on: ubuntu-24.04-arm
 
     steps:
       - name: Checkout Git Repository
         uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.release.tag_name }}
 
       - name: Set up JDK 25
         uses: actions/setup-java@v5
@@ -30,7 +33,9 @@ jobs:
 
       - name: Version from the tag
         id: version
-        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: printf 'version=%s\n' "${RELEASE_TAG#v}" >> "$GITHUB_OUTPUT"
 
       # -Pversion rather than an edit to gradle.properties: that file belongs to upstream, and
       # every line of it we change is a line a future merge has to argue about.
@@ -38,13 +43,15 @@ jobs:
         env:
           GITHUB_ACTOR: ${{ github.actor }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: ./gradlew clean build -Pversion=${{ steps.version.outputs.version }}
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+        run: ./gradlew clean build "-Pversion=$RELEASE_VERSION"
 
-      - name: Release
-        uses: softprops/action-gh-release@v2
-        with:
-          name: ${{ github.ref_name }}
-          generate_release_notes: true
-          files: |
-            build/libs/BuildSystem-${{ steps.version.outputs.version }}.jar
-            build/libs/GroundsMaps-${{ steps.version.outputs.version }}.jar
+      - name: Attach artifacts to the existing Release Please release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          gh release upload "$RELEASE_TAG" \
+            "build/libs/BuildSystem-${RELEASE_TAG#v}.jar" \
+            "build/libs/GroundsMaps-${RELEASE_TAG#v}.jar"

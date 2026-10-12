@@ -320,8 +320,10 @@ Release Please calculates the next version from conventional commits; do not
 create tags or releases manually.
 
 The organization `RELEASE_PLEASE_TOKEN` must remain available to this repository.
-Unlike `GITHUB_TOKEN`, it allows release-PR checks and the existing tag-triggered
-`release.yml` artifact build to run. After a reviewed release PR is merged,
-`release.yml` builds with the tag version and attaches both `BuildSystem` and
-`GroundsMaps` JARs. Upstream `gradle.properties` and the Sonatype workflow remain
+Unlike `GITHUB_TOKEN`, it allows release-PR checks and the `release.published`
+artifact build to run. After a reviewed release PR is merged, Release Please
+publishes the release; `release.yml` checks out its exact tag, builds with that
+version and attaches both `BuildSystem` and `GroundsMaps` JARs without creating
+another release or changing its notes. Existing assets are not overwritten.
+Upstream `gradle.properties` and the Sonatype workflow remain
 unchanged. Release publication does not deploy or restart the build server.

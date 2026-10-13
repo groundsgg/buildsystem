@@ -76,6 +76,8 @@ public final class WorldArchive {
      */
     private static final String NESTED_WORLDS = "dimensions";
 
+    private static final Path DERIVED_MANIFEST = Path.of("grounds", "derived-manifest.json");
+
     private WorldArchive() {}
 
     /** What packing produced: where it is, what it hashes to, and how big it turned out. */
@@ -142,15 +144,15 @@ public final class WorldArchive {
                 if (name.isEmpty() || name.endsWith("/")) {
                     continue;
                 }
-                if (isUnsafeEntry(name) || isExcludedEntry(name)) {
-                    if (isUnsafeEntry(name)) {
-                        throw new IOException("refusing archive entry outside the world folder: " + name);
-                    }
-                    continue;
+                if (isUnsafeEntry(name)) {
+                    throw new IOException("refusing archive entry outside the world folder: " + name);
                 }
                 Path dest = root.resolve(name).normalize();
                 if (!dest.startsWith(root)) {
                     throw new IOException("refusing archive entry outside the world folder: " + name);
+                }
+                if (isExcludedEntry(name) || root.relativize(dest).equals(DERIVED_MANIFEST)) {
+                    continue;
                 }
                 Path parent = dest.getParent();
                 if (parent != null) {
@@ -196,7 +198,8 @@ public final class WorldArchive {
             @Override
             public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
                 if (attrs.isRegularFile()
-                        && !EXCLUDED.contains(file.getFileName().toString())) {
+                        && !EXCLUDED.contains(file.getFileName().toString())
+                        && !worldFolder.relativize(file).equals(DERIVED_MANIFEST)) {
                     files.add(file);
                 }
                 return FileVisitResult.CONTINUE;

@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.1.1-grounds.16](https://github.com/groundsgg/buildsystem/compare/v4.1.0-grounds.16...v4.1.1-grounds.16) (2026-10-13)
+
+
+### Bug Fixes
+
+* exclude derived map manifest from archives ([#37](https://github.com/groundsgg/buildsystem/issues/37)) ([ae04a4e](https://github.com/groundsgg/buildsystem/commit/ae04a4ecf9a296407c7b6ee44329e8aa76d182fe))
+
 ## [4.1.0-grounds.16](https://github.com/groundsgg/buildsystem/compare/v4.0.0-grounds.16...v4.1.0-grounds.16) (2026-10-12)
 
 

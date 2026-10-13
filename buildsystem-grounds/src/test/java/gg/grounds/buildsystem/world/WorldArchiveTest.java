@@ -24,8 +24,10 @@ import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.github.luben.zstd.ZstdInputStream;
+import com.github.luben.zstd.ZstdOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -33,6 +35,7 @@ import java.util.ArrayList;
 import java.util.List;
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream;
+import org.apache.commons.compress.archivers.tar.TarArchiveOutputStream;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -142,6 +145,29 @@ class WorldArchiveTest {
     }
 
     @Test
+    void pack_omits_only_the_generated_manifest_without_deleting_the_source() throws IOException {
+        Path world = world(
+                "scene.json",
+                "grounds/derived-manifest.json",
+                "grounds/pois.json",
+                "grounds/setup.json",
+                "data/derived-manifest.json");
+
+        List<String> entries = entriesOf(
+                WorldArchive.pack(world, tmp.resolve("metadata.tar.zst")).file());
+
+        assertFalse(entries.contains("grounds/derived-manifest.json"), entries.toString());
+        assertTrue(Files.exists(world.resolve("grounds/derived-manifest.json")));
+        assertEquals(
+                "contents of grounds/derived-manifest.json",
+                Files.readString(world.resolve("grounds/derived-manifest.json")));
+        assertTrue(entries.contains("scene.json"), entries.toString());
+        assertTrue(entries.contains("grounds/pois.json"), entries.toString());
+        assertTrue(entries.contains("grounds/setup.json"), entries.toString());
+        assertTrue(entries.contains("data/derived-manifest.json"), entries.toString());
+    }
+
+    @Test
     void unpack_round_trips_a_packed_world() throws IOException {
         Path world = world("region/r.0.0.mca", "level.dat", "data/raids.dat");
         WorldArchive.Archive packed = WorldArchive.pack(world, tmp.resolve("round.tar.zst"));
@@ -150,6 +176,29 @@ class WorldArchiveTest {
         assertEquals("contents of region/r.0.0.mca", Files.readString(out.resolve("region/r.0.0.mca")));
         assertEquals("contents of level.dat", Files.readString(out.resolve("level.dat")));
         assertEquals("contents of data/raids.dat", Files.readString(out.resolve("data/raids.dat")));
+    }
+
+    @Test
+    void unpack_omits_the_normalized_generated_manifest_and_keeps_authored_metadata() throws IOException {
+        Path archive = tmp.resolve("incoming.tar.zst");
+        writeArchive(
+                archive,
+                "./grounds/derived-manifest.json",
+                "scene.json",
+                "grounds/pois.json",
+                "grounds/setup.json",
+                "data/derived-manifest.json");
+
+        Path out = tmp.resolve("unpacked-metadata");
+        WorldArchive.unpack(archive, out);
+
+        assertFalse(Files.exists(out.resolve("grounds/derived-manifest.json")));
+        assertEquals("archive contents of scene.json", Files.readString(out.resolve("scene.json")));
+        assertEquals("archive contents of grounds/pois.json", Files.readString(out.resolve("grounds/pois.json")));
+        assertEquals("archive contents of grounds/setup.json", Files.readString(out.resolve("grounds/setup.json")));
+        assertEquals(
+                "archive contents of data/derived-manifest.json",
+                Files.readString(out.resolve("data/derived-manifest.json")));
     }
 
     @Test
@@ -200,5 +249,20 @@ class WorldArchiveTest {
             }
         }
         throw new IOException("missing archive entry: " + wanted);
+    }
+
+    private static void writeArchive(Path archive, String... entries) throws IOException {
+        try (OutputStream out = Files.newOutputStream(archive);
+                ZstdOutputStream zstd = new ZstdOutputStream(out);
+                TarArchiveOutputStream tar = new TarArchiveOutputStream(zstd)) {
+            for (String name : entries) {
+                byte[] contents = ("archive contents of " + name).getBytes(StandardCharsets.UTF_8);
+                TarArchiveEntry entry = new TarArchiveEntry(name);
+                entry.setSize(contents.length);
+                tar.putArchiveEntry(entry);
+                tar.write(contents);
+                tar.closeArchiveEntry();
+            }
+        }
     }
 }

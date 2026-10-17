@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.1.2-grounds.16](https://github.com/groundsgg/buildsystem/compare/v4.1.1-grounds.16...v4.1.2-grounds.16) (2026-10-17)
+
+
+### Bug Fixes
+
+* **build:** resolve dependencies through the runner mirror in Docker builds ([#39](https://github.com/groundsgg/buildsystem/issues/39)) ([ef77de2](https://github.com/groundsgg/buildsystem/commit/ef77de241a95f2066a4980656a1b37c8d4fe41c6))
+
 ## [4.1.1-grounds.16](https://github.com/groundsgg/buildsystem/compare/v4.1.0-grounds.16...v4.1.1-grounds.16) (2026-10-13)
 
 

@@ -15,6 +15,7 @@ COPY buildsystem-grounds ./buildsystem-grounds
 
 RUN --mount=type=cache,target=/root/.gradle \
     --mount=type=secret,id=github_token,required=true \
+    --mount=type=secret,id=gradle_init,target=/root/.gradle/init.d/grounds-maven-mirror.init.gradle.kts,required=false \
     GITHUB_ACTOR="$GITHUB_USER" GITHUB_TOKEN="$(cat /run/secrets/github_token)" \
     ./gradlew --no-daemon clean :buildsystem-core:shadowJar :buildsystem-grounds:shadowJar && \
     test "$(find build/libs -maxdepth 1 -type f -name 'BuildSystem-*.jar' | wc -l)" -eq 1 && \

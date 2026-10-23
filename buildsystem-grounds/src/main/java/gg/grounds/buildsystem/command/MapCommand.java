@@ -50,12 +50,14 @@ import java.nio.file.SimpleFileVisitor;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.event.ClickEvent;
+import net.kyori.adventure.text.event.HoverEvent;
 import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.format.TextDecoration;
 import org.bukkit.Location;
@@ -79,8 +81,8 @@ import org.jspecify.annotations.Nullable;
 @NullMarked
 public final class MapCommand implements CommandExecutor, TabCompleter {
 
-    private static final List<String> SUBCOMMANDS =
-            List.of("push", "pull", "import", "fork", "versions", "link", "status", "login", "logout", "poi", "setup");
+    private static final List<String> SUBCOMMANDS = List.of(
+            "push", "pull", "import", "fork", "versions", "list", "link", "status", "login", "logout", "poi", "setup");
 
     private static final String PERM_PULL = "grounds.maps.pull";
     private static final String PERM_PULL_FORCE = "grounds.maps.pull.force";
@@ -205,6 +207,18 @@ public final class MapCommand implements CommandExecutor, TabCompleter {
         // build world that does not exist yet.
         if (early.equals("pull")) {
             pull(player, args);
+            return true;
+        }
+        // Browsing the registry is how a builder finds what to pull, so it works anywhere too.
+        if (early.equals("list")) {
+            list(player, args.length > 1 ? args[1] : null);
+            return true;
+        }
+        if (early.equals("versions") && args.length > 1) {
+            String address = usableAddress(player, args[1]);
+            if (address != null) {
+                versions(player, address);
+            }
             return true;
         }
         // Import creates a world, so like pull it cannot require standing in one.
@@ -1009,28 +1023,82 @@ public final class MapCommand implements CommandExecutor, TabCompleter {
     private void versions(Player player, BuildWorld world) {
         String address = links.addressOf(world.getUniqueId());
         if (address == null) {
-            error(player, "This world is not linked to a map.");
+            error(player, "This world is not linked to a map. /map versions <namespace/name> shows any map.");
             return;
         }
+        versions(player, address);
+    }
+
+    /**
+     * The last ten versions of any map, newest first. A published one can be pulled, so its line
+     * carries a click that puts {@code /map pull <address> <version>} into the chat box — suggested
+     * rather than run, because a builder may still want to add {@code -f}.
+     */
+    private void versions(Player player, String address) {
         TokenSource auth = authFor(player);
         offMainThread(player, () -> {
             List<MapVersion> versions = registry.listVersions(auth, address);
             if (versions.isEmpty()) {
-                info(player, "No versions yet — /map push makes the first one.");
+                info(player, address + " has no versions yet — /map push makes the first one.");
                 return;
             }
             info(player, address + ":");
             versions.stream()
                     .sorted((a, b) -> Integer.compare(b.version(), a.version()))
                     .limit(10)
-                    .forEach(version -> info(
-                            player,
-                            "  v"
-                                    + version.version()
-                                    + " · "
-                                    + version.state().toLowerCase(Locale.ROOT)
-                                    + (version.note() == null ? "" : " · " + version.note())));
+                    .forEach(version -> player.sendMessage(versionLine(address, version)));
         });
+    }
+
+    static Component versionLine(String address, MapVersion version) {
+        Component line = Component.text(
+                "  v"
+                        + version.version()
+                        + " · "
+                        + version.state().toLowerCase(Locale.ROOT)
+                        + (version.sizeBytes() > 0 ? " · " + mib(version.sizeBytes()) : "")
+                        + (version.note() == null ? "" : " · " + version.note()),
+                NamedTextColor.GRAY);
+        if (!version.isPublished()) {
+            return line;
+        }
+        String pull = "/map pull " + address + " " + version.version();
+        return line.append(Component.text(" [pull]", NamedTextColor.AQUA)
+                .clickEvent(ClickEvent.suggestCommand(pull))
+                .hoverEvent(HoverEvent.showText(Component.text(pull + "  (add -f to replace an existing world)"))));
+    }
+
+    /**
+     * Every map the registry shows this builder, optionally only one namespace. A line is a click
+     * to that map's versions, which is where pulling starts.
+     */
+    private void list(Player player, @Nullable String namespace) {
+        TokenSource auth = authFor(player);
+        String wanted =
+                namespace == null ? null : namespace.toLowerCase(Locale.ROOT).replaceAll("/+$", "");
+        offMainThread(player, () -> {
+            List<MapSummary> maps = registry.listMaps(auth).stream()
+                    .filter(map -> wanted == null || map.namespace().equals(wanted))
+                    .sorted(Comparator.comparing(MapSummary::address))
+                    .toList();
+            if (maps.isEmpty()) {
+                info(player, wanted == null ? "The registry has no maps yet." : "No maps in " + wanted + ".");
+                return;
+            }
+            info(player, (wanted == null ? "Maps" : "Maps in " + wanted) + " (" + maps.size() + "):");
+            maps.forEach(map -> player.sendMessage(mapLine(map)));
+        });
+    }
+
+    static Component mapLine(MapSummary map) {
+        String versions = "/map versions " + map.address();
+        return Component.text("  " + map.address(), NamedTextColor.AQUA)
+                .append(Component.text(
+                        " · " + map.kind().toLowerCase(Locale.ROOT)
+                                + (map.displayName().equals(map.address()) ? "" : " · " + map.displayName()),
+                        NamedTextColor.GRAY))
+                .clickEvent(ClickEvent.runCommand(versions))
+                .hoverEvent(HoverEvent.showText(Component.text("Show versions: " + versions)));
     }
 
     // ------------------------------------------------------------ plumbing

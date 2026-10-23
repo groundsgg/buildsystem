@@ -1,5 +1,19 @@
 # Changelog
 
+## [4.2.0-grounds.16](https://github.com/groundsgg/buildsystem/compare/v4.1.1-grounds.16...v4.2.0-grounds.16) (2026-10-23)
+
+
+### Features
+
+* **catalog:** include the Paper manifest registration runtime ([#41](https://github.com/groundsgg/buildsystem/issues/41)) ([bb586c8](https://github.com/groundsgg/buildsystem/commit/bb586c8da69c1e622e800e98811eb2838e97bba4))
+* **grounds:** browse the registry and pull a version from chat ([#43](https://github.com/groundsgg/buildsystem/issues/43)) ([5c2cac7](https://github.com/groundsgg/buildsystem/commit/5c2cac7ad98260961adb9ab122a5eb075fcc263e))
+* **grounds:** sync the build server's working copy to the registry ([#42](https://github.com/groundsgg/buildsystem/issues/42)) ([46d2937](https://github.com/groundsgg/buildsystem/commit/46d2937e9db741fa26cac5962feeca61d07a71ce))
+
+
+### Bug Fixes
+
+* **build:** resolve dependencies through the runner mirror in Docker builds ([#39](https://github.com/groundsgg/buildsystem/issues/39)) ([ef77de2](https://github.com/groundsgg/buildsystem/commit/ef77de241a95f2066a4980656a1b37c8d4fe41c6))
+
 ## [4.1.1-grounds.16](https://github.com/groundsgg/buildsystem/compare/v4.1.0-grounds.16...v4.1.1-grounds.16) (2026-10-13)
 
 

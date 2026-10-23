@@ -19,7 +19,10 @@
 package gg.grounds.buildsystem.registry;
 
 import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
+import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
+import com.google.gson.JsonNull;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import java.io.IOException;
@@ -56,7 +59,9 @@ import org.jspecify.annotations.Nullable;
 @NullMarked
 public final class RegistryClient {
 
-    private static final Gson GSON = new Gson();
+    /** Nulls are written: the working copy's {@code "base": null} means "no snapshot yet", not "absent". */
+    private static final Gson GSON = new GsonBuilder().serializeNulls().create();
+
     private static final Duration TIMEOUT = Duration.ofMinutes(10);
 
     /** Refresh a little before expiry, so a long upload never starts on a token about to die. */
@@ -314,6 +319,77 @@ public final class RegistryClient {
                 .getAsJsonObject());
     }
 
+    // ------------------------------------------------------------ workspace
+
+    /**
+     * The snapshot a build server's working copy currently stands at, or {@code null} when it has
+     * never committed one. Only the 404 means "none"; every other failure is an exception, because
+     * mistaking an outage for an empty server is how good state gets overwritten.
+     */
+    public @Nullable WorkspaceHead workspaceHead(TokenSource auth, String server) throws RegistryException {
+        HttpResponse<String> response =
+                sendRaw(request(auth, workspacePath(server) + "/head").GET(), "read the working copy head");
+        if (response.statusCode() == 404) {
+            return null;
+        }
+        return WorkspaceHead.from(
+                expectOk(response, "read the working copy head").getAsJsonObject());
+    }
+
+    /**
+     * Opens a snapshot. The registry answers with the blobs it does not have yet, each with a
+     * presigned PUT; everything else in the manifest is already stored.
+     *
+     * @throws WorkspaceConflictException when {@code base} is no longer the head, or the registry's
+     *     shrink guard refused a manifest much smaller than the head
+     */
+    public WorkspaceSnapshot createWorkspaceSnapshot(
+            TokenSource auth, String server, @Nullable Long base, List<WorkspaceEntry> files, boolean shrink)
+            throws RegistryException {
+        JsonObject body = new JsonObject();
+        if (base == null) {
+            body.add("base", JsonNull.INSTANCE);
+        } else {
+            body.addProperty("base", base);
+        }
+        JsonArray entries = new JsonArray();
+        for (WorkspaceEntry file : files) {
+            entries.add(file.toJson());
+        }
+        body.add("files", entries);
+        body.addProperty("shrink", shrink);
+        String what = "open a working copy snapshot";
+        return WorkspaceSnapshot.from(expectOk(
+                        sendRaw(json(auth, workspacePath(server) + "/snapshots", body), what), what)
+                .getAsJsonObject());
+    }
+
+    /**
+     * Makes a snapshot the head. Until this returns, a restore still gets the previous one.
+     *
+     * @throws WorkspaceConflictException when the head moved or a blob is still missing
+     */
+    public long commitWorkspaceSnapshot(TokenSource auth, String server, long snapshot) throws RegistryException {
+        String what = "commit working copy snapshot " + snapshot;
+        JsonObject body = expectOk(
+                        sendRaw(
+                                request(auth, workspacePath(server) + "/snapshots/" + snapshot + "/commit")
+                                        .POST(noBody()),
+                                what),
+                        what)
+                .getAsJsonObject();
+        return body.get("head").getAsLong();
+    }
+
+    /** Uploads one file to a presigned URL the registry handed out. */
+    public void putBlob(String presignedUrl, Path file) throws RegistryException {
+        putArchive(presignedUrl, file);
+    }
+
+    private static String workspacePath(String server) {
+        return "/v1/workspaces/" + URLEncoder.encode(server, StandardCharsets.UTF_8);
+    }
+
     // ------------------------------------------------------------ internals
 
     private void putArchive(String presignedUrl, Path archive) throws RegistryException {
@@ -379,14 +455,31 @@ public final class RegistryClient {
     }
 
     private JsonElement send(HttpRequest.Builder builder, String what) throws RegistryException {
-        HttpResponse<String> response;
+        HttpResponse<String> response = sendRaw(builder, what);
+        if (response.statusCode() / 100 != 2) {
+            throw new RegistryException("could not " + what + ": " + describe(response));
+        }
+        return JsonParser.parseString(response.body());
+    }
+
+    private HttpResponse<String> sendRaw(HttpRequest.Builder builder, String what) throws RegistryException {
         try {
-            response = http.send(builder.build(), HttpResponse.BodyHandlers.ofString());
+            return http.send(builder.build(), HttpResponse.BodyHandlers.ofString());
         } catch (IOException | InterruptedException e) {
             if (e instanceof InterruptedException) {
                 Thread.currentThread().interrupt();
             }
             throw new RegistryException("could not " + what + ": " + e.getMessage(), e);
+        }
+    }
+
+    /** Like {@link #send}, but a 409 is its own exception: for the working copy it means another writer. */
+    private static JsonElement expectOk(HttpResponse<String> response, String what) throws RegistryException {
+        if (response.statusCode() == 409) {
+            String detail = describe(response);
+            throw new WorkspaceConflictException(
+                    "could not " + what + ": " + detail,
+                    detail.toLowerCase(Locale.ROOT).contains("shrink"));
         }
         if (response.statusCode() / 100 != 2) {
             throw new RegistryException("could not " + what + ": " + describe(response));

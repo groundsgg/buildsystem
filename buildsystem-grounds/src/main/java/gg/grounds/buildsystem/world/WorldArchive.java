@@ -181,7 +181,12 @@ public final class WorldArchive {
                 || EXCLUDED.contains(name.substring(name.lastIndexOf('/') + 1).toLowerCase(Locale.ROOT));
     }
 
-    private static List<Path> collect(Path worldFolder) throws IOException {
+    /**
+     * Every file {@link #pack} would put into a bundle, sorted by their path relative to
+     * {@code worldFolder}. Public for the working copy, which has to agree with a push on what a
+     * world is.
+     */
+    public static List<Path> collect(Path worldFolder) throws IOException {
         List<Path> files = new ArrayList<>();
         Files.walkFileTree(worldFolder, new SimpleFileVisitor<>() {
             @Override

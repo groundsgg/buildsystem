@@ -42,7 +42,9 @@ One plugin, `GroundsMaps`, depending on `BuildSystem`. It gives builders one com
 | `/map link <namespace/name>` | Ties this world to a map, creating the map if it is new |
 | `/map push [address] [note]` | Packs the world, uploads it, publishes a new version. The address links a world that has none |
 | `/map fork <namespace/name>` | A new map from this one's current version. Copies no bytes |
-| `/map versions` | The last ten versions and their state |
+| `/map list [namespace]` | Every map in the registry, or one namespace. Click a map to see its versions |
+| `/map versions [namespace/name]` | The last ten versions and their state — of this world's map, or of any map. A published version has a `[pull]` button that puts `/map pull <map> <version>` in the chat box |
+| `/map pull <namespace/name> [version\|latest] [-f]` | Downloads a published version as a build world. No version: what this environment has pinned |
 | `/map poi set <name>` | Marks where you stand, facing where you look |
 | `/map poi list` / `tp <name>` / `remove <name>` | See them, stand in one, drop one |
 | `/map import <https-url> <world> [sha256=<hex>]` | A world someone else made, from a `.zip` or `.tar.zst`, as a new build world |

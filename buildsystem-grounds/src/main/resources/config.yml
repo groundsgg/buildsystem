@@ -29,3 +29,9 @@ import:
   max-download-mib: 512
   max-unpacked-mib: 2048
   max-entries: 100000
+
+# The working copy: every world and BuildSystem's data, synced to the registry so a pod replacement
+# loses at most one interval. On only when GROUNDS_WORKSPACE_SERVER is set and the service account
+# (GROUNDS_MAPS_CLIENT_SECRET) is configured.
+workspace:
+  interval-seconds: 60

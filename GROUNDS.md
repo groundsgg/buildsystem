@@ -327,3 +327,34 @@ version and attaches both `BuildSystem` and `GroundsMaps` JARs without creating
 another release or changing its notes. Existing assets are not overwritten.
 Upstream `gradle.properties` and the Sonatype workflow remain
 unchanged. Release publication does not deploy or restart the build server.
+
+## Working copy
+
+The build server's disk is ephemeral and the satellite allows no persistent volume, so GroundsMaps
+keeps the server's state in the registry instead: every world, BuildSystem's own `*.yml`, the map
+links in `links.yml`, and the builder tools' configuration and schematics. A pod replacement then
+loses at most one interval of work. The design is in service-maps,
+`docs/superpowers/specs/2026-10-23-buildserver-working-copy-design.md`.
+
+It is **on only when `GROUNDS_WORKSPACE_SERVER` is set** (e.g. `stage-buildserver`) and the
+service account (`GROUNDS_MAPS_CLIENT_SECRET`) is configured. `workspace.interval-seconds` in
+`config.yml` sets the interval, 60 by default.
+
+Every interval the worlds are saved, and a few seconds later the files that changed are hashed,
+the ones the registry does not have are uploaded, and the snapshot is committed. Unchanged files
+are never uploaded twice; an idle server asks the registry nothing.
+
+**It refuses to sync rather than risk the backup.** The image's start wrapper restores the head
+before Paper starts and writes `.workspace-head` (a snapshot number, or `none`). If that marker is
+missing or disagrees with the registry's head, the plugin logs SEVERE and does not sync — that is
+the case where an empty server would otherwise replace a good snapshot. A 409 from the registry
+because the head moved stops syncing until restart: somebody else is writing this server's working
+copy. A manifest much smaller than the head is refused by the registry unless a BuildSystem world
+was deleted since the last commit; that refusal is logged and retried.
+
+Files modified in the last five seconds keep the entry they had in the last commit, and every
+uploaded file is hashed again afterwards; if it changed during the upload, the snapshot is
+abandoned and the next pass retries. That narrows, but does not close, the window in which a region
+file is read while Paper or FAWE writes it — the same gap as under *Known gap* above.
+
+On shutdown one last pass runs, bounded to 15 seconds.

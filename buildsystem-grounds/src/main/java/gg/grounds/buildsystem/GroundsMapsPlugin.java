@@ -23,6 +23,7 @@ import gg.grounds.buildsystem.command.MapSetupCommand;
 import gg.grounds.buildsystem.registry.DeviceFlow;
 import gg.grounds.buildsystem.registry.PlayerLogins;
 import gg.grounds.buildsystem.registry.RegistryClient;
+import gg.grounds.buildsystem.workspace.WorkspaceLoop;
 import gg.grounds.buildsystem.world.BlockMarkListener;
 import gg.grounds.buildsystem.world.MapLinks;
 import gg.grounds.buildsystem.world.PendingMarks;
@@ -41,6 +42,7 @@ import org.jspecify.annotations.NullMarked;
 public final class GroundsMapsPlugin extends JavaPlugin {
 
     private @org.jspecify.annotations.Nullable RegistryClient registry;
+    private @org.jspecify.annotations.Nullable WorkspaceLoop workspace;
 
     @Override
     public void onEnable() {
@@ -78,6 +80,15 @@ public final class GroundsMapsPlugin extends JavaPlugin {
         Objects.requireNonNull(getCommand("ms")).setTabCompleter(setup);
 
         getLogger().info("Map registry: " + require("registry.base-url"));
+
+        this.workspace = WorkspaceLoop.start(this, registry, getConfig().getLong("workspace.interval-seconds", 60));
+    }
+
+    @Override
+    public void onDisable() {
+        if (workspace != null) {
+            workspace.shutdown();
+        }
     }
 
     private String require(String path) {

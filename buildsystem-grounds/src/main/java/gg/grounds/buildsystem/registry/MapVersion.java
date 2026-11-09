@@ -47,8 +47,14 @@ public record MapVersion(
         this(version, state, bundleSha256, parentVersion, sizeBytes, note, null, null);
     }
 
-    public MapVersion(int version, String state, @Nullable String bundleSha256,
-            @Nullable Integer parentVersion, long sizeBytes, @Nullable String note, @Nullable Scene scene) {
+    public MapVersion(
+            int version,
+            String state,
+            @Nullable String bundleSha256,
+            @Nullable Integer parentVersion,
+            long sizeBytes,
+            @Nullable String note,
+            @Nullable Scene scene) {
         this(version, state, bundleSha256, parentVersion, sizeBytes, note, scene, null);
     }
 
@@ -108,13 +114,19 @@ public record MapVersion(
         if (!json.has("preparation") || !json.get("preparation").isJsonObject()) return null;
         JsonObject source = json.getAsJsonObject("preparation");
         Integer format = optionalInt(source, "lightFormat");
-        return new Preparation(optionalString(source, "stage"), format == null ? 0 : format,
-                optionalString(source, "failureCode"), optionalString(source, "detail"));
+        return new Preparation(
+                optionalString(source, "stage"),
+                format == null ? 0 : format,
+                optionalString(source, "failureCode"),
+                optionalString(source, "detail"));
     }
 
     /** Server-owned preparation read model; raw PUBLISHED alone does not mean ready. */
-    public record Preparation(@Nullable String stage, int lightFormat,
-            @Nullable String failureCode, @Nullable String detail) {}
+    public record Preparation(
+            @Nullable String stage,
+            int lightFormat,
+            @Nullable String failureCode,
+            @Nullable String detail) {}
 
     public boolean isPublished() {
         return "PUBLISHED".equals(state);

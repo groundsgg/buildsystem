@@ -104,6 +104,7 @@ public final class MapCommand implements CommandExecutor, TabCompleter {
     private final MapLinks links;
     private final String cdnBaseUrl;
     private final MapPullResolver pullResolver = new MapPullResolver();
+    private final PublishSessions publishes = new PublishSessions();
     private final SceneEditorPushGuard sceneEditorPushGuard;
     /** Who has a sign-in link outstanding, so a second one cannot orphan the first. */
     private final java.util.Set<java.util.UUID> pendingLogins = java.util.concurrent.ConcurrentHashMap.newKeySet();
@@ -595,6 +596,11 @@ public final class MapCommand implements CommandExecutor, TabCompleter {
     }
 
     private void status(Player player, BuildWorld world) {
+        PublishSessions.Session publishing = publishes.active(player.getWorld().getUID());
+        if (publishing != null) {
+            info(player, PublishMessages.already(publishing));
+            return;
+        }
         String signedIn = logins.nameOf(player.getUniqueId());
         info(
                 player,
@@ -925,75 +931,100 @@ public final class MapCommand implements CommandExecutor, TabCompleter {
             return;
         }
         final String address = resolved;
-        Path folder = bukkitWorld.getWorldFolder().toPath();
-        String problem = MapPublishValidation.problem(folder);
-        if (problem != null) {
-            error(player, problem);
+        final Integer parent = links.baseVersionOf(world.getUniqueId());
+        PublishSessions.Session session = publishes.begin(bukkitWorld.getUID(), address, linked, parent);
+        if (session == null) {
+            PublishSessions.Session pending = publishes.active(bukkitWorld.getUID());
+            if (pending != null) info(player, PublishMessages.already(pending));
             return;
         }
-
-        // Save on the main thread, then stop autosaving while we read the region files. A tick
-        // that flushes a chunk mid-archive produces a bundle that is a valid tar of a corrupt
-        // world, and nothing downstream can tell.
-        bukkitWorld.save();
+        PublishFeedback feedback = new PublishFeedback(
+                publishes, session, this::onPublishThread, text -> info(player, text), text -> error(player, text));
         boolean autoSave = bukkitWorld.isAutoSave();
-        bukkitWorld.setAutoSave(false);
-
-        Integer parent = links.baseVersionOf(world.getUniqueId());
-        TokenSource auth = authFor(player);
-        info(player, "Packing " + address + "…");
-
-        offMainThread(player, () -> {
-            Path archive = Files.createTempFile("grounds-map-", ".tar.zst");
-            try {
-                if (linkFirst) {
-                    List<MapSummary> maps = registry.listMaps(auth);
-                    if (maps.stream().noneMatch(map -> map.address().equals(address))) {
-                        registry.createMap(auth, address, world.getName(), "ARENA", false);
-                        info(player, "Created " + address + ".");
+        Runnable restore = () -> bukkitWorld.setAutoSave(autoSave);
+        try {
+            feedback.update(localProgress(RegistryClient.PushPhase.CHECKING));
+            Path folder = bukkitWorld.getWorldFolder().toPath();
+            String problem = MapPublishValidation.problem(folder);
+            if (problem != null) {
+                feedback.failed(problem);
+                feedback.finish(restore);
+                return;
+            }
+            feedback.update(localProgress(RegistryClient.PushPhase.SAVING));
+            bukkitWorld.save();
+            bukkitWorld.setAutoSave(false);
+            TokenSource auth = authFor(player);
+            feedback.update(localProgress(RegistryClient.PushPhase.PACKING));
+            offMainThread(player, () -> {
+                Path archive = null;
+                try {
+                    archive = Files.createTempFile("grounds-map-", ".tar.zst");
+                    if (linkFirst) {
+                        List<MapSummary> maps = registry.listMaps(auth);
+                        if (maps.stream().noneMatch(map -> map.address().equals(address))) {
+                            registry.createMap(auth, address, world.getName(), "ARENA", false);
+                        }
+                    }
+                    WorldArchive.Archive packed = WorldArchive.pack(folder, archive);
+                    String archiveProblem = MapPublishValidation.problem(packed);
+                    if (archiveProblem != null) {
+                        feedback.failed(archiveProblem);
+                        return;
+                    }
+                    onPublishThread(restore);
+                    feedback.archiveSize(packed.sizeBytes());
+                    MapVersion prepared = registry.push(
+                            auth,
+                            address,
+                            packed.file(),
+                            packed.sha256(),
+                            packed.sizeBytes(),
+                            parent,
+                            note,
+                            feedback::update);
+                    feedback.complete(() -> {
+                        if (session.canUpdateLink(
+                                links.addressOf(world.getUniqueId()), links.baseVersionOf(world.getUniqueId())))
+                            linkQuietly(player, world, address, prepared.version());
+                        else info(player, "Your world link changed while publishing; the current link was kept.");
+                        ok(
+                                player,
+                                "Ready to go live: " + address + " v" + prepared.version() + " ("
+                                        + publicationFacts(prepared) + ") as " + auth.describe()
+                                        + ". An admin decides when it goes live.");
+                    });
+                } catch (RegistryException e) {
+                    feedback.failed(e.getMessage());
+                } catch (IOException e) {
+                    feedback.failed("Could not read or pack the world: " + e.getMessage());
+                } catch (RuntimeException e) {
+                    feedback.failed("An admin can see the details in the server log.");
+                    plugin.getLogger().severe("map publish failed: " + e);
+                } finally {
+                    try {
+                        if (archive != null) Files.deleteIfExists(archive);
+                    } catch (IOException cleanup) {
+                        plugin.getLogger().warning("could not remove temporary map archive: " + cleanup.getMessage());
+                    } finally {
+                        feedback.finish(restore);
                     }
                 }
-                WorldArchive.Archive packed = WorldArchive.pack(folder, archive);
-                String archiveProblem = MapPublishValidation.problem(packed);
-                if (archiveProblem != null) {
-                    onMainThread(() -> error(player, archiveProblem));
-                    return;
-                }
-                onMainThread(() -> bukkitWorld.setAutoSave(autoSave));
-                info(player, "Uploading " + mib(packed.sizeBytes()) + " to the registry…");
-                MapVersion published = registry.push(
-                        auth,
-                        address,
-                        packed.file(),
-                        packed.sha256(),
-                        packed.sizeBytes(),
-                        parent,
-                        note,
-                        phase -> onMainThread(() -> {
-                            if (phase.phase() == RegistryClient.PushPhase.DERIVING) {
-                                info(player, "Upload accepted; deriving " + address + "…");
-                            }
-                        }));
-                onMainThread(() -> {
-                    linkQuietly(player, world, address, published.version());
-                    ok(
-                            player,
-                            "Published "
-                                    + address
-                                    + " v"
-                                    + published.version()
-                                    + " ("
-                                    + publicationFacts(published)
-                                    + ") as "
-                                    + auth.describe()
-                                    + ". An admin decides when it goes live.");
-                });
-            } finally {
-                // Whatever happened, autosave goes back on and the temp file goes away.
-                onMainThread(() -> bukkitWorld.setAutoSave(autoSave));
-                Files.deleteIfExists(archive);
-            }
-        });
+            });
+        } catch (RuntimeException e) {
+            feedback.failed("Could not save or start the map publication. An admin can see the details.");
+            feedback.finish(restore);
+            plugin.getLogger().severe("map publish could not start: " + e);
+        }
+    }
+
+    private static RegistryClient.PushUpdate localProgress(RegistryClient.PushPhase phase) {
+        return new RegistryClient.PushUpdate(phase, 0, java.time.Duration.ZERO, false);
+    }
+
+    private void onPublishThread(Runnable work) {
+        if (org.bukkit.Bukkit.isPrimaryThread()) work.run();
+        else onMainThread(work);
     }
 
     private void fork(Player player, BuildWorld world, @Nullable String target) {

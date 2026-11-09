@@ -196,3 +196,18 @@ that come with them.
 ## License
 
 This project is licensed under the [GNU General Public License v3.0](LICENSE.txt).
+
+### Map preparation progress
+
+`/map push` reports checking/saving the world, packing, upload, the preparation queue,
+map/scene derivation and lighting. It reports **Ready to go live** only after the registry
+confirms that the published version has its accepted current-format light bundle. An admin
+still chooses when to move a live pin. Long remote steps emit a waiting update every 30 seconds;
+`/map status` shows the active step, and another push of the same world shows that status
+instead of creating a competing snapshot. Other worlds can publish independently.
+
+The default preparation wait is 90 minutes, configurable with
+`registry.preparation-timeout-minutes`. A timeout or interrupted wait identifies the exact
+version and says processing may continue; it never claims readiness. Missing or unsupported
+registry status also refuses a false success, so deploy the preparation-capable API first.
+Deliberate changes to the world's local map link during the wait are retained.

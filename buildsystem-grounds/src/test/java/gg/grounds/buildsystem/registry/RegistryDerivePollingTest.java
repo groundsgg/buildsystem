@@ -60,15 +60,18 @@ class RegistryDerivePollingTest {
                         "{\"version\":7,\"state\":\"DRAFT\",\"parentVersion\":null,\"sizeBytes\":0,\"note\":null}");
             } else if (path.endsWith("/versions/7")) {
                 int poll = polls.getAndIncrement();
-                String preparation = switch (poll) {
-                    case 0 -> "QUEUED";
-                    case 1 -> "DERIVING";
-                    case 2 -> "WAITING_FOR_LIGHT";
-                    case 3, 4 -> "LIGHTING";
-                    default -> "READY";
-                };
+                String preparation =
+                        switch (poll) {
+                            case 0 -> "QUEUED";
+                            case 1 -> "DERIVING";
+                            case 2 -> "WAITING_FOR_LIGHT";
+                            case 3, 4 -> "LIGHTING";
+                            default -> "READY";
+                        };
                 String state = poll == 0 ? "DRAFT" : poll == 1 ? "DERIVING" : "PUBLISHED";
-                json(exchange, 200,
+                json(
+                        exchange,
+                        200,
                         "{\"version\":7,\"state\":\"" + state
                                 + "\",\"bundleSha256\":\"derived\",\"parentVersion\":null,\"sizeBytes\":5,\"note\":null,"
                                 + "\"preparation\":{\"stage\":\"" + preparation + "\",\"lightFormat\":2}}");
@@ -88,7 +91,12 @@ class RegistryDerivePollingTest {
             assertEquals(7, version.version());
             assertEquals("PUBLISHED", version.state());
             assertEquals(
-                    List.of(Duration.ofSeconds(1), Duration.ofSeconds(2), Duration.ofSeconds(4), Duration.ofSeconds(5), Duration.ofSeconds(5)),
+                    List.of(
+                            Duration.ofSeconds(1),
+                            Duration.ofSeconds(2),
+                            Duration.ofSeconds(4),
+                            Duration.ofSeconds(5),
+                            Duration.ofSeconds(5)),
                     delays);
             assertEquals(6, polls.get());
             assertFalse(requests.stream().anyMatch(request -> request.contains("/publish")), requests.toString());

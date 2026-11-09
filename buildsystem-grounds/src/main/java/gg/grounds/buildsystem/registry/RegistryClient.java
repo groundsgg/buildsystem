@@ -85,20 +85,39 @@ public final class RegistryClient {
     private Instant tokenExpiry = Instant.EPOCH;
 
     public RegistryClient(String baseUrl, String tokenUrl, String clientId, String clientSecret) {
-        this(baseUrl, tokenUrl, clientId, clientSecret, System::nanoTime, RegistryClient::sleep, DEFAULT_PREPARATION_TIMEOUT);
+        this(
+                baseUrl,
+                tokenUrl,
+                clientId,
+                clientSecret,
+                System::nanoTime,
+                RegistryClient::sleep,
+                DEFAULT_PREPARATION_TIMEOUT);
     }
 
-    public RegistryClient(String baseUrl, String tokenUrl, String clientId, String clientSecret, Duration preparationTimeout) {
+    public RegistryClient(
+            String baseUrl, String tokenUrl, String clientId, String clientSecret, Duration preparationTimeout) {
         this(baseUrl, tokenUrl, clientId, clientSecret, System::nanoTime, RegistryClient::sleep, preparationTimeout);
     }
 
-    RegistryClient(String baseUrl, String tokenUrl, String clientId, String clientSecret,
-            LongSupplier monotonicNanos, Sleeper sleeper) {
+    RegistryClient(
+            String baseUrl,
+            String tokenUrl,
+            String clientId,
+            String clientSecret,
+            LongSupplier monotonicNanos,
+            Sleeper sleeper) {
         this(baseUrl, tokenUrl, clientId, clientSecret, monotonicNanos, sleeper, DEFAULT_PREPARATION_TIMEOUT);
     }
 
-    RegistryClient(String baseUrl, String tokenUrl, String clientId, String clientSecret,
-            LongSupplier monotonicNanos, Sleeper sleeper, Duration preparationTimeout) {
+    RegistryClient(
+            String baseUrl,
+            String tokenUrl,
+            String clientId,
+            String clientSecret,
+            LongSupplier monotonicNanos,
+            Sleeper sleeper,
+            Duration preparationTimeout) {
         if (preparationTimeout.isNegative() || preparationTimeout.isZero())
             throw new IllegalArgumentException("preparation timeout must be positive");
         preparationTimeout.toNanos(); // Reject values outside the monotonic clock's supported budget.
@@ -220,12 +239,14 @@ public final class RegistryClient {
                 MapVersion.from(send(json(auth, versionsPath(address), commit), "commit a version of " + address)
                         .getAsJsonObject());
         if (committed.version() <= 0) throw new RegistryException("The registry did not allocate a map version.");
-        reporter.report(switch (committed.state()) {
-            case "DRAFT" -> PushPhase.QUEUED;
-            case "DERIVING" -> PushPhase.DERIVING;
-            case "IN_REVIEW" -> PushPhase.AWAITING_REVIEW;
-            default -> PushPhase.CONTACTING_REGISTRY;
-        }, committed.version());
+        reporter.report(
+                switch (committed.state()) {
+                    case "DRAFT" -> PushPhase.QUEUED;
+                    case "DERIVING" -> PushPhase.DERIVING;
+                    case "IN_REVIEW" -> PushPhase.AWAITING_REVIEW;
+                    default -> PushPhase.CONTACTING_REGISTRY;
+                },
+                committed.version());
         return awaitPrepared(auth, address, committed.version(), reporter);
     }
 
@@ -241,17 +262,24 @@ public final class RegistryClient {
             if (Thread.currentThread().isInterrupted()) throw interrupted(version, versionUrl, null);
             MapVersion current = null;
             try {
-                HttpResponse<String> response = sendRaw(request(auth, path)
-                        .timeout(Duration.ofNanos(Math.min(remaining, STATUS_TIMEOUT.toNanos()))).GET(), "check version " + version);
+                HttpResponse<String> response = sendRaw(
+                        request(auth, path)
+                                .timeout(Duration.ofNanos(Math.min(remaining, STATUS_TIMEOUT.toNanos())))
+                                .GET(),
+                        "check version " + version);
                 if (response.statusCode() >= 500 || response.statusCode() == 429) {
                     reporter.report(PushPhase.CONTACTING_REGISTRY, version);
                 } else {
                     if (response.statusCode() / 100 != 2)
                         throw new RegistryException("could not check v" + version + ": " + describe(response));
                     try {
-                        current = MapVersion.from(JsonParser.parseString(response.body()).getAsJsonObject());
+                        current = MapVersion.from(
+                                JsonParser.parseString(response.body()).getAsJsonObject());
                     } catch (RuntimeException malformed) {
-                        throw new RegistryException("The registry returned invalid preparation status for v" + version + "; check " + versionUrl, malformed);
+                        throw new RegistryException(
+                                "The registry returned invalid preparation status for v" + version + "; check "
+                                        + versionUrl,
+                                malformed);
                     }
                 }
             } catch (RegistryException error) {
@@ -261,30 +289,42 @@ public final class RegistryClient {
             }
             if (current != null) {
                 if (current.version() != version)
-                    throw new RegistryException("The registry returned another version while preparing v" + version + "; check " + versionUrl);
+                    throw new RegistryException("The registry returned another version while preparing v" + version
+                            + "; check " + versionUrl);
                 // Preserve the original scene diagnostics even if a legacy/error response has no preparation DTO.
                 if ("DERIVE_FAILED".equals(current.state()))
                     throw new RegistryException("Deriving v" + version + " failed: " + sceneProblems(current));
                 if ("REJECTED".equals(current.state()) || "TAKEN_DOWN".equals(current.state()))
-                    throw new RegistryException("Version v" + version + " is " + current.state().toLowerCase(Locale.ROOT) + ".");
-                if (current.isPublished() && (current.bundleSha256() == null || current.bundleSha256().isBlank()))
-                    throw new RegistryException("The registry returned published v" + version + " without a bundle digest.");
+                    throw new RegistryException(
+                            "Version v" + version + " is " + current.state().toLowerCase(Locale.ROOT) + ".");
+                if (current.isPublished()
+                        && (current.bundleSha256() == null
+                                || current.bundleSha256().isBlank()))
+                    throw new RegistryException(
+                            "The registry returned published v" + version + " without a bundle digest.");
                 MapVersion.Preparation preparation = current.preparation();
                 if (preparation == null || preparation.stage() == null || preparation.lightFormat() <= 0)
                     throw unsupportedPreparation(version, versionUrl);
-                PushPhase phase = switch (preparation.stage()) {
-                    case "QUEUED" -> PushPhase.QUEUED;
-                    case "DERIVING" -> PushPhase.DERIVING;
-                    case "AWAITING_REVIEW" -> PushPhase.AWAITING_REVIEW;
-                    case "WAITING_FOR_LIGHT" -> PushPhase.WAITING_FOR_LIGHT;
-                    case "LIGHTING" -> PushPhase.LIGHTING;
-                    case "READY" -> PushPhase.READY;
-                    case "FAILED" -> throw new RegistryException("Preparing v" + version + " failed: "
-                            + (preparation.detail() == null ? "the registry could not prepare this map" : preparation.detail()));
-                    case "UNAVAILABLE" -> throw new RegistryException("Preparation of v" + version + " is unavailable: "
-                            + (preparation.detail() == null ? "server-side preparation is disabled" : preparation.detail()));
-                    default -> throw unsupportedPreparation(version, versionUrl);
-                };
+                PushPhase phase =
+                        switch (preparation.stage()) {
+                            case "QUEUED" -> PushPhase.QUEUED;
+                            case "DERIVING" -> PushPhase.DERIVING;
+                            case "AWAITING_REVIEW" -> PushPhase.AWAITING_REVIEW;
+                            case "WAITING_FOR_LIGHT" -> PushPhase.WAITING_FOR_LIGHT;
+                            case "LIGHTING" -> PushPhase.LIGHTING;
+                            case "READY" -> PushPhase.READY;
+                            case "FAILED" ->
+                                throw new RegistryException("Preparing v" + version + " failed: "
+                                        + (preparation.detail() == null
+                                                ? "the registry could not prepare this map"
+                                                : preparation.detail()));
+                            case "UNAVAILABLE" ->
+                                throw new RegistryException("Preparation of v" + version + " is unavailable: "
+                                        + (preparation.detail() == null
+                                                ? "server-side preparation is disabled"
+                                                : preparation.detail()));
+                            default -> throw unsupportedPreparation(version, versionUrl);
+                        };
                 if (phase == PushPhase.READY) {
                     if (!current.isPublished()) throw unsupportedPreparation(version, versionUrl);
                     reporter.report(phase, version);
@@ -311,7 +351,8 @@ public final class RegistryClient {
     }
 
     private static RegistryException interrupted(int version, String url, @Nullable Throwable cause) {
-        return new RegistryException("Waiting for v" + version + " was interrupted; processing continues at " + url, cause);
+        return new RegistryException(
+                "Waiting for v" + version + " was interrupted; processing continues at " + url, cause);
     }
 
     private static RegistryException stillProcessing(int version, String versionUrl) {
@@ -349,8 +390,18 @@ public final class RegistryClient {
     }
 
     public enum PushPhase {
-        CHECKING, SAVING, PACKING, UPLOADING, SUBMITTING, QUEUED, DERIVING,
-        AWAITING_REVIEW, WAITING_FOR_LIGHT, LIGHTING, CONTACTING_REGISTRY, READY
+        CHECKING,
+        SAVING,
+        PACKING,
+        UPLOADING,
+        SUBMITTING,
+        QUEUED,
+        DERIVING,
+        AWAITING_REVIEW,
+        WAITING_FOR_LIGHT,
+        LIGHTING,
+        CONTACTING_REGISTRY,
+        READY
     }
 
     public record PushUpdate(PushPhase phase, int version, Duration elapsed, boolean heartbeat) {}
@@ -362,7 +413,9 @@ public final class RegistryClient {
         private int previousVersion;
         private long lastReport;
 
-        PushReporter(PushProgress sink) { this.sink = sink; }
+        PushReporter(PushProgress sink) {
+            this.sink = sink;
+        }
 
         void report(PushPhase phase, int version) {
             long now = monotonicNanos.getAsLong();

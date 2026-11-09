@@ -970,7 +970,7 @@ public final class MapCommand implements CommandExecutor, TabCompleter {
                         parent,
                         note,
                         phase -> onMainThread(() -> {
-                            if (phase == RegistryClient.PushPhase.DERIVING) {
+                            if (phase.phase() == RegistryClient.PushPhase.DERIVING) {
                                 info(player, "Upload accepted; deriving " + address + "…");
                             }
                         }));

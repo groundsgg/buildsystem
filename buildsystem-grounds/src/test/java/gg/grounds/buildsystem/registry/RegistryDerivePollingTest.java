@@ -59,19 +59,22 @@ class RegistryDerivePollingTest {
                         200,
                         "{\"version\":7,\"state\":\"DRAFT\",\"parentVersion\":null,\"sizeBytes\":0,\"note\":null}");
             } else if (path.endsWith("/versions/7")) {
-                String state =
-                        switch (polls.getAndIncrement()) {
-                            case 0 -> "DRAFT";
+                int poll = polls.getAndIncrement();
+                String preparation =
+                        switch (poll) {
+                            case 0 -> "QUEUED";
                             case 1 -> "DERIVING";
-                            case 2 -> "DRAFT";
-                            case 3 -> "DERIVING";
-                            default -> "PUBLISHED";
+                            case 2 -> "WAITING_FOR_LIGHT";
+                            case 3, 4 -> "LIGHTING";
+                            default -> "READY";
                         };
+                String state = poll == 0 ? "DRAFT" : poll == 1 ? "DERIVING" : "PUBLISHED";
                 json(
                         exchange,
                         200,
                         "{\"version\":7,\"state\":\"" + state
-                                + "\",\"bundleSha256\":\"derived\",\"parentVersion\":null,\"sizeBytes\":5,\"note\":null}");
+                                + "\",\"bundleSha256\":\"derived\",\"parentVersion\":null,\"sizeBytes\":5,\"note\":null,"
+                                + "\"preparation\":{\"stage\":\"" + preparation + "\",\"lightFormat\":2}}");
             } else {
                 throw new AssertionError("unexpected request: " + path);
             }
@@ -88,9 +91,14 @@ class RegistryDerivePollingTest {
             assertEquals(7, version.version());
             assertEquals("PUBLISHED", version.state());
             assertEquals(
-                    List.of(Duration.ofSeconds(1), Duration.ofSeconds(2), Duration.ofSeconds(4), Duration.ofSeconds(5)),
+                    List.of(
+                            Duration.ofSeconds(1),
+                            Duration.ofSeconds(2),
+                            Duration.ofSeconds(4),
+                            Duration.ofSeconds(5),
+                            Duration.ofSeconds(5)),
                     delays);
-            assertEquals(5, polls.get());
+            assertEquals(6, polls.get());
             assertFalse(requests.stream().anyMatch(request -> request.contains("/publish")), requests.toString());
         } finally {
             server.stop(0);
@@ -101,7 +109,7 @@ class RegistryDerivePollingTest {
     void derivation_failure_timeout_and_interruption_are_actionable() throws Exception {
         assertFailure("DERIVE_FAILED", now -> {}, "v7", "BROKEN_SCENE", "world.spawn");
         assertFailure(
-                "DRAFT", now -> now.set(Duration.ofMinutes(10).plusNanos(1).toNanos()), "v7", "processing continues");
+                "DRAFT", now -> now.set(Duration.ofMinutes(90).plusNanos(1).toNanos()), "v7", "processing continues");
         assertFailure(
                 "DRAFT",
                 now -> {
@@ -160,7 +168,7 @@ class RegistryDerivePollingTest {
                         exchange,
                         200,
                         "{\"version\":7,\"state\":\"" + state
-                                + "\",\"parentVersion\":null,\"sizeBytes\":0,\"note\":null,\"scene\":{\"problems\":[{\"code\":\"BROKEN_SCENE\",\"path\":\"world.spawn\",\"message\":\"bad spawn\"}]}}");
+                                + "\",\"parentVersion\":null,\"sizeBytes\":0,\"note\":null,\"preparation\":{\"stage\":\"QUEUED\",\"lightFormat\":2},\"scene\":{\"problems\":[{\"code\":\"BROKEN_SCENE\",\"path\":\"world.spawn\",\"message\":\"bad spawn\"}]}}");
             } else {
                 throw new AssertionError("unexpected request: " + path);
             }

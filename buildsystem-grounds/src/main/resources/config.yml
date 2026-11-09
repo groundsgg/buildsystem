@@ -2,6 +2,8 @@
 # core and the build server does not, so `svc.cluster.local` resolves to nothing here — which is
 # the same reason authentication is Keycloak rather than a ServiceAccount token.
 registry:
+  # Wait through derivation and lighting; long steps report their status every 30 seconds.
+  preparation-timeout-minutes: 90
   base-url: "https://api.grounds.gg"
   # First-party public map CDN (pin files + bundles). Not the API origin.
   cdn-base-url: "https://maps.grounds.gg"

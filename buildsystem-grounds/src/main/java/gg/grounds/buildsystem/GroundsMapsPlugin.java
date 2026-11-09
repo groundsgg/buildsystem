@@ -27,6 +27,7 @@ import gg.grounds.buildsystem.workspace.WorkspaceLoop;
 import gg.grounds.buildsystem.world.BlockMarkListener;
 import gg.grounds.buildsystem.world.MapLinks;
 import gg.grounds.buildsystem.world.PendingMarks;
+import java.time.Duration;
 import java.util.Objects;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.jspecify.annotations.NullMarked;
@@ -58,7 +59,14 @@ public final class GroundsMapsPlugin extends JavaPlugin {
         }
 
         this.registry = new RegistryClient(
-                require("registry.base-url"), require("oidc.token-url"), require("oidc.client-id"), clientSecret);
+                require("registry.base-url"),
+                require("oidc.token-url"),
+                require("oidc.client-id"),
+                clientSecret,
+                Duration.ofMinutes(getConfig()
+                        .getLong(
+                                "registry.preparation-timeout-minutes",
+                                RegistryClient.DEFAULT_PREPARATION_TIMEOUT.toMinutes())));
 
         DeviceFlow deviceFlow = new DeviceFlow(require("oidc.issuer-url"), require("oidc.device-client-id"));
         PlayerLogins logins = new PlayerLogins(deviceFlow);

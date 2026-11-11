@@ -181,6 +181,39 @@ class RegistryPreparationPollingTest {
         }
     }
 
+    @Test
+    void confirmed_map_readiness_survives_optional_lod_timeout_or_status_outage() throws Exception {
+        try (Harness h = new Harness(List.of(new Reply(200, lodVersion("GENERATING"))))) {
+            h.budget = Duration.ofSeconds(3);
+            h.advance = Duration.ofSeconds(3);
+            MapVersion result = h.push(new ArrayList<>());
+            assertTrue(result.isPublished());
+            assertEquals("READY", result.preparation().stage());
+            assertEquals("UNAVAILABLE", result.lod().stage());
+        }
+        for (int code : List.of(403, 500)) {
+            try (Harness h = new Harness(List.of(
+                    new Reply(200, lodVersion("GENERATING")),
+                    new Reply(code, "{\"detail\":\"private-internal-marker\"}")))) {
+                MapVersion result = h.push(new ArrayList<>());
+                assertEquals("READY", result.preparation().stage());
+                assertEquals("UNAVAILABLE", result.lod().stage());
+            }
+        }
+    }
+
+    @Test
+    void status_read_does_not_forward_raw_service_error_details() throws Exception {
+        try (Harness h = new Harness(List.of(new Reply(500, "{\"detail\":\"private-internal-marker\"}")))) {
+            String base = "http://127.0.0.1:" + h.server.getAddress().getPort();
+            RegistryClient client = new RegistryClient(base, base + "/token", "id", "secret");
+            RegistryException error =
+                    assertThrows(RegistryException.class, () -> client.getVersion(() -> "token", "maps/test", 7));
+            assertFalse(error.getMessage().contains("private-internal-marker"));
+            assertTrue(error.getMessage().contains("500"));
+        }
+    }
+
     private static String lodVersion(String stage) {
         var json = com.google.gson.JsonParser.parseString(version("READY")).getAsJsonObject();
         var lod = new com.google.gson.JsonObject();

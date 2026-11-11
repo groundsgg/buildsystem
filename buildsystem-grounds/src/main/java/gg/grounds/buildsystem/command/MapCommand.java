@@ -621,14 +621,19 @@ public final class MapCommand implements CommandExecutor, TabCompleter {
                         + ".");
         if (base != null) {
             TokenSource auth = authFor(player);
-            offMainThread(player, () -> {
-                MapVersion current = registry.getVersion(auth, address, base);
-                onMainThread(() -> {
-                    if (player.isOnline()
+            LodStatusFeedback feedback = new LodStatusFeedback(
+                    this::onMainThread,
+                    () -> player.isOnline()
                             && java.util.Objects.equals(links.addressOf(world.getUniqueId()), address)
-                            && java.util.Objects.equals(links.baseVersionOf(world.getUniqueId()), base))
-                        info(player, "[" + address + " v" + base + "] " + PublishMessages.lodSummary(current.lod()));
-                });
+                            && java.util.Objects.equals(links.baseVersionOf(world.getUniqueId()), base),
+                    text -> info(player, text),
+                    "[" + address + " v" + base + "] ");
+            offMainThread(player, () -> {
+                try {
+                    feedback.received(registry.getVersion(auth, address, base).lod());
+                } catch (RegistryException | RuntimeException unavailable) {
+                    feedback.unavailable();
+                }
             });
         }
     }

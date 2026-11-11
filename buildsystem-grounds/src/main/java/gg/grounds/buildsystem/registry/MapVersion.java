@@ -34,7 +34,8 @@ public record MapVersion(
         long sizeBytes,
         @Nullable String note,
         @Nullable Scene scene,
-        @Nullable Preparation preparation) {
+        @Nullable Preparation preparation,
+        @Nullable Lod lod) {
 
     /** Kept for callers that construct versions without registry derivation details. */
     public MapVersion(
@@ -58,6 +59,18 @@ public record MapVersion(
         this(version, state, bundleSha256, parentVersion, sizeBytes, note, scene, null);
     }
 
+    public MapVersion(
+            int version,
+            String state,
+            @Nullable String bundleSha256,
+            @Nullable Integer parentVersion,
+            long sizeBytes,
+            @Nullable String note,
+            @Nullable Scene scene,
+            @Nullable Preparation preparation) {
+        this(version, state, bundleSha256, parentVersion, sizeBytes, note, scene, preparation, null);
+    }
+
     static MapVersion from(JsonObject json) {
         return new MapVersion(
                 json.get("version").getAsInt(),
@@ -67,7 +80,8 @@ public record MapVersion(
                 optionalLong(json, "sizeBytes"),
                 optionalString(json, "note"),
                 scene(json),
-                preparation(json));
+                preparation(json),
+                lod(json));
     }
 
     private static @Nullable String optionalString(JsonObject json, String field) {
@@ -127,6 +141,23 @@ public record MapVersion(
             int lightFormat,
             @Nullable String failureCode,
             @Nullable String detail) {}
+
+    private static @Nullable Lod lod(JsonObject json) {
+        if (!json.has("lod") || !json.get("lod").isJsonObject()) return null;
+        JsonObject value = json.getAsJsonObject("lod");
+        return new Lod(
+                optionalString(value, "stage"),
+                optionalInt(value, "columns"),
+                value.has("bundleBytes") && !value.get("bundleBytes").isJsonNull()
+                        ? value.get("bundleBytes").getAsLong()
+                        : null);
+    }
+
+    /** Safe summary only; source URLs and server capabilities never belong to builder feedback. */
+    public record Lod(
+            @Nullable String stage,
+            @Nullable Integer columns,
+            @Nullable Long bundleBytes) {}
 
     public boolean isPublished() {
         return "PUBLISHED".equals(state);

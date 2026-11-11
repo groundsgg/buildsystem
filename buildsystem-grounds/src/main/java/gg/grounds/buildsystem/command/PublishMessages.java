@@ -1,9 +1,11 @@
 package gg.grounds.buildsystem.command;
 
+import gg.grounds.buildsystem.registry.MapVersion.Lod;
 import gg.grounds.buildsystem.registry.RegistryClient.PushPhase;
 import gg.grounds.buildsystem.registry.RegistryClient.PushUpdate;
 import java.util.Locale;
 import org.jspecify.annotations.NullMarked;
+import org.jspecify.annotations.Nullable;
 
 @NullMarked
 final class PublishMessages {
@@ -29,6 +31,32 @@ final class PublishMessages {
         return prefix(session) + "Already publishing: " + label(session.last.phase()) + ".";
     }
 
+    static String lodSummary(@Nullable Lod lod) {
+        if (lod == null || lod.stage() == null) return "LODs: status unavailable from the map service.";
+        return switch (lod.stage()) {
+            case "READY" ->
+                lod.columns() != null && lod.columns() > 0 && lod.bundleBytes() != null && lod.bundleBytes() > 0
+                        ? String.format(
+                                Locale.ROOT,
+                                "LODs ready: %,d chunks, %.1f MB.",
+                                lod.columns(),
+                                lod.bundleBytes() / 1024.0 / 1024.0)
+                        : "LODs ready.";
+            case "WAITING_FOR_ACTIVATION" ->
+                "LODs: waiting for Stage activation of this version; generation starts afterwards.";
+            case "WAITING_FOR_MAP" -> "LODs: waiting for map preparation.";
+            case "WAITING_FOR_LIGHT" -> "LODs: waiting for lighting.";
+            case "QUEUED" -> "LODs: queued for generation.";
+            case "GENERATING" -> "LODs: generation is running.";
+            case "FAILED" ->
+                "LOD generation failed. The prepared map remains available; an admin can check the failure.";
+            case "LIMIT_REACHED" ->
+                "LOD generation paused: the measurement limit has been reached. The prepared map remains available.";
+            case "NOT_CONFIGURED" -> "LOD generation is not enabled for this map.";
+            default -> "LODs: status unavailable from the map service.";
+        };
+    }
+
     private static String prefix(PublishSessions.Session session) {
         return "[" + session.address + (session.last.version() > 0 ? " v" + session.last.version() : "") + "] ";
     }
@@ -45,6 +73,8 @@ final class PublishMessages {
             case AWAITING_REVIEW -> "Waiting for review";
             case WAITING_FOR_LIGHT -> "Waiting for lighting";
             case LIGHTING -> "Calculating light";
+            case WAITING_FOR_LOD -> "Waiting for LOD generation";
+            case GENERATING_LOD -> "Generating LODs";
             case CONTACTING_REGISTRY -> "Checking preparation status";
             case READY -> "Ready to go live";
         };

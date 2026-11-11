@@ -184,6 +184,26 @@ public final class RegistryClient {
         return versions;
     }
 
+    public MapVersion getVersion(TokenSource auth, String address, int version) throws RegistryException {
+        HttpResponse<String> response;
+        try {
+            response =
+                    sendRaw(request(auth, versionsPath(address) + "/" + version).GET(), "read version status");
+        } catch (RegistryException error) {
+            throw new RegistryException("LOD status is unavailable from the map service.", error);
+        }
+        if (response.statusCode() / 100 != 2)
+            throw new RegistryException("LOD status unavailable (HTTP " + response.statusCode() + ").");
+        try {
+            MapVersion result =
+                    MapVersion.from(JsonParser.parseString(response.body()).getAsJsonObject());
+            if (result.version() != version) throw new RegistryException("The registry returned another map version.");
+            return result;
+        } catch (RuntimeException malformed) {
+            throw new RegistryException("The map service returned invalid version status.", malformed);
+        }
+    }
+
     // -------------------------------------------------------------- publish
 
     /**
@@ -256,10 +276,19 @@ public final class RegistryClient {
         String versionUrl = baseUrl + path;
         long deadline = monotonicNanos.getAsLong() + preparationTimeout.toNanos();
         Duration delay = Duration.ofSeconds(1);
+        MapVersion confirmedPrepared = null;
+        long optionalLodStarted = 0;
         while (true) {
             long remaining = deadline - monotonicNanos.getAsLong();
-            if (remaining <= 0) throw stillProcessing(version, versionUrl);
-            if (Thread.currentThread().isInterrupted()) throw interrupted(version, versionUrl, null);
+            if (remaining <= 0
+                    || Thread.currentThread().isInterrupted()
+                    || (confirmedPrepared != null
+                            && monotonicNanos.getAsLong() - optionalLodStarted
+                                    >= Duration.ofMinutes(5).toNanos())) {
+                if (confirmedPrepared != null) return optionalLodUnavailable(confirmedPrepared, reporter);
+                if (Thread.currentThread().isInterrupted()) throw interrupted(version, versionUrl, null);
+                throw stillProcessing(version, versionUrl);
+            }
             MapVersion current = null;
             try {
                 HttpResponse<String> response = sendRaw(
@@ -268,6 +297,7 @@ public final class RegistryClient {
                                 .GET(),
                         "check version " + version);
                 if (response.statusCode() >= 500 || response.statusCode() == 429) {
+                    if (confirmedPrepared != null) return optionalLodUnavailable(confirmedPrepared, reporter);
                     reporter.report(PushPhase.CONTACTING_REGISTRY, version);
                 } else {
                     if (response.statusCode() / 100 != 2)
@@ -283,6 +313,7 @@ public final class RegistryClient {
                     }
                 }
             } catch (RegistryException error) {
+                if (confirmedPrepared != null) return optionalLodUnavailable(confirmedPrepared, reporter);
                 if (Thread.currentThread().isInterrupted()) throw interrupted(version, versionUrl, error);
                 if (error.getCause() instanceof IOException) reporter.report(PushPhase.CONTACTING_REGISTRY, version);
                 else throw error;
@@ -327,22 +358,51 @@ public final class RegistryClient {
                         };
                 if (phase == PushPhase.READY) {
                     if (!current.isPublished()) throw unsupportedPreparation(version, versionUrl);
-                    reporter.report(phase, version);
-                    return current;
+                    MapVersion.Lod lod = current.lod();
+                    if (confirmedPrepared == null) optionalLodStarted = monotonicNanos.getAsLong();
+                    confirmedPrepared = current;
+                    if (lod != null && "QUEUED".equals(lod.stage())) {
+                        phase = PushPhase.WAITING_FOR_LOD;
+                    } else if (lod != null && "GENERATING".equals(lod.stage())) {
+                        phase = PushPhase.GENERATING_LOD;
+                    } else {
+                        // Optional LODs can await activation, fail, or exhaust their measurement
+                        // allowance while the map itself remains prepared and publishable.
+                        reporter.report(phase, version);
+                        return current;
+                    }
                 }
                 reporter.report(phase, version);
             }
             remaining = deadline - monotonicNanos.getAsLong();
-            if (remaining <= 0) throw stillProcessing(version, versionUrl);
+            if (remaining <= 0) {
+                if (confirmedPrepared != null) return optionalLodUnavailable(confirmedPrepared, reporter);
+                throw stillProcessing(version, versionUrl);
+            }
             try {
                 sleeper.sleep(Duration.ofNanos(Math.min(delay.toNanos(), remaining)));
             } catch (InterruptedException error) {
                 Thread.currentThread().interrupt();
+                if (confirmedPrepared != null) return optionalLodUnavailable(confirmedPrepared, reporter);
                 throw interrupted(version, versionUrl, error);
             }
             delay = delay.multipliedBy(2);
             if (delay.compareTo(Duration.ofSeconds(5)) > 0) delay = Duration.ofSeconds(5);
         }
+    }
+
+    private static MapVersion optionalLodUnavailable(MapVersion prepared, PushReporter reporter) {
+        reporter.report(PushPhase.READY, prepared.version());
+        return new MapVersion(
+                prepared.version(),
+                prepared.state(),
+                prepared.bundleSha256(),
+                prepared.parentVersion(),
+                prepared.sizeBytes(),
+                prepared.note(),
+                prepared.scene(),
+                prepared.preparation(),
+                new MapVersion.Lod("UNAVAILABLE", null, null));
     }
 
     private static RegistryException unsupportedPreparation(int version, String url) {
@@ -400,6 +460,8 @@ public final class RegistryClient {
         AWAITING_REVIEW,
         WAITING_FOR_LIGHT,
         LIGHTING,
+        WAITING_FOR_LOD,
+        GENERATING_LOD,
         CONTACTING_REGISTRY,
         READY
     }

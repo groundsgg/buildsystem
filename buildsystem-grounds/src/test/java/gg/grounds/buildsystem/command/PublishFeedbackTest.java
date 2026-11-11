@@ -95,6 +95,22 @@ class PublishFeedbackTest {
         assertFalse(unlinked.canUpdateLink("lobby/mainlobby", 13));
     }
 
+    @Test
+    void lod_feedback_separates_success_activation_and_measurement_limits() {
+        assertTrue(
+                PublishMessages.lodSummary(new gg.grounds.buildsystem.registry.MapVersion.Lod("READY", 1812, 4113662L))
+                        .contains("1,812"));
+        assertTrue(PublishMessages.lodSummary(
+                        new gg.grounds.buildsystem.registry.MapVersion.Lod("WAITING_FOR_ACTIVATION", null, null))
+                .contains("activation"));
+        assertTrue(PublishMessages.lodSummary(
+                        new gg.grounds.buildsystem.registry.MapVersion.Lod("LIMIT_REACHED", null, null))
+                .contains("measurement limit"));
+        assertTrue(PublishMessages.lodSummary(new gg.grounds.buildsystem.registry.MapVersion.Lod("FAILED", null, null))
+                .contains("failed"));
+        assertTrue(PublishMessages.lodSummary(null).contains("unavailable"));
+    }
+
     private PublishFeedback feedback(PublishSessions.Session session) {
         Thread serverThread = Thread.currentThread();
         return new PublishFeedback(

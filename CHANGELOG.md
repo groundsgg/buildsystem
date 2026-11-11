@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.2.1-grounds.16](https://github.com/groundsgg/buildsystem/compare/v4.2.0-grounds.16...v4.2.1-grounds.16) (2026-11-11)
+
+
+### Bug Fixes
+
+* **maps:** report LOD preparation in push feedback and status ([#45](https://github.com/groundsgg/buildsystem/issues/45)) ([7b17307](https://github.com/groundsgg/buildsystem/commit/7b17307030b79d3c45a5f0d9984f32d0fede423a))
+
 ## [4.2.0-grounds.16](https://github.com/groundsgg/buildsystem/compare/v4.1.1-grounds.16...v4.2.0-grounds.16) (2026-11-09)
 
 

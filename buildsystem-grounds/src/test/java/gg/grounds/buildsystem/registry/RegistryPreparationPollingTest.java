@@ -203,6 +203,21 @@ class RegistryPreparationPollingTest {
     }
 
     @Test
+    void optional_tracking_is_bounded_separately_and_does_not_hide_a_withdrawn_map() throws Exception {
+        try (Harness h = new Harness(List.of(new Reply(200, lodVersion("GENERATING"))))) {
+            h.advance = Duration.ofMinutes(6);
+            MapVersion result = h.push(new ArrayList<>());
+            assertEquals("UNAVAILABLE", result.lod().stage());
+            assertEquals(1, h.polls.get());
+        }
+        try (Harness h = new Harness(List.of(
+                new Reply(200, lodVersion("GENERATING")),
+                new Reply(200, version("FAILED").replace("PUBLISHED", "TAKEN_DOWN"))))) {
+            assertThrows(RegistryException.class, () -> h.push(new ArrayList<>()));
+        }
+    }
+
+    @Test
     void status_read_does_not_forward_raw_service_error_details() throws Exception {
         try (Harness h = new Harness(List.of(new Reply(500, "{\"detail\":\"private-internal-marker\"}")))) {
             String base = "http://127.0.0.1:" + h.server.getAddress().getPort();

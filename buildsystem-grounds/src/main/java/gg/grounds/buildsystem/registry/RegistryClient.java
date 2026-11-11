@@ -184,6 +184,14 @@ public final class RegistryClient {
         return versions;
     }
 
+    public MapVersion getVersion(TokenSource auth, String address, int version) throws RegistryException {
+        MapVersion result = MapVersion.from(send(
+                        request(auth, versionsPath(address) + "/" + version).GET(), "read version " + version)
+                .getAsJsonObject());
+        if (result.version() != version) throw new RegistryException("The registry returned another map version.");
+        return result;
+    }
+
     // -------------------------------------------------------------- publish
 
     /**
@@ -327,8 +335,17 @@ public final class RegistryClient {
                         };
                 if (phase == PushPhase.READY) {
                     if (!current.isPublished()) throw unsupportedPreparation(version, versionUrl);
-                    reporter.report(phase, version);
-                    return current;
+                    MapVersion.Lod lod = current.lod();
+                    if (lod != null && "QUEUED".equals(lod.stage())) {
+                        phase = PushPhase.WAITING_FOR_LOD;
+                    } else if (lod != null && "GENERATING".equals(lod.stage())) {
+                        phase = PushPhase.GENERATING_LOD;
+                    } else {
+                        // Optional LODs can await activation, fail, or exhaust their measurement
+                        // allowance while the map itself remains prepared and publishable.
+                        reporter.report(phase, version);
+                        return current;
+                    }
                 }
                 reporter.report(phase, version);
             }
@@ -400,6 +417,8 @@ public final class RegistryClient {
         AWAITING_REVIEW,
         WAITING_FOR_LIGHT,
         LIGHTING,
+        WAITING_FOR_LOD,
+        GENERATING_LOD,
         CONTACTING_REGISTRY,
         READY
     }

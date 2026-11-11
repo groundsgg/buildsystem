@@ -145,6 +145,54 @@ class RegistryPreparationPollingTest {
                 + "\"preparation\":{\"stage\":\"" + stage + "\",\"lightFormat\":2}}";
     }
 
+    @Test
+    void reports_lod_queue_and_generation_after_lighting_without_claiming_early_success() throws Exception {
+        try (Harness h = new Harness(List.of(
+                new Reply(200, lodVersion("QUEUED")),
+                new Reply(200, lodVersion("GENERATING")),
+                new Reply(200, lodVersion("READY"))))) {
+            List<RegistryClient.PushUpdate> updates = new ArrayList<>();
+            MapVersion result = h.push(updates);
+            assertEquals("READY", result.lod().stage());
+            assertEquals(1812, result.lod().columns());
+            assertEquals(4113662L, result.lod().bundleBytes());
+            assertEquals(
+                    List.of(
+                            RegistryClient.PushPhase.UPLOADING,
+                            RegistryClient.PushPhase.SUBMITTING,
+                            RegistryClient.PushPhase.QUEUED,
+                            RegistryClient.PushPhase.WAITING_FOR_LOD,
+                            RegistryClient.PushPhase.GENERATING_LOD,
+                            RegistryClient.PushPhase.READY),
+                    updates.stream().map(RegistryClient.PushUpdate::phase).toList());
+            assertEquals(3, h.polls.get());
+        }
+    }
+
+    @Test
+    void optional_lod_wait_limit_and_failure_do_not_turn_a_prepared_map_into_a_failed_upload() throws Exception {
+        for (String stage : List.of("WAITING_FOR_ACTIVATION", "LIMIT_REACHED", "FAILED", "NOT_CONFIGURED")) {
+            try (Harness h = new Harness(List.of(new Reply(200, lodVersion(stage))))) {
+                MapVersion result = h.push(new ArrayList<>());
+                assertEquals("READY", result.preparation().stage());
+                assertEquals(stage, result.lod().stage());
+                assertEquals(1, h.polls.get());
+            }
+        }
+    }
+
+    private static String lodVersion(String stage) {
+        var json = com.google.gson.JsonParser.parseString(version("READY")).getAsJsonObject();
+        var lod = new com.google.gson.JsonObject();
+        lod.addProperty("stage", stage);
+        if (stage.equals("READY")) {
+            lod.addProperty("columns", 1812);
+            lod.addProperty("bundleBytes", 4113662L);
+        }
+        json.add("lod", lod);
+        return json.toString();
+    }
+
     private record Reply(int status, String body) {}
 
     private class Harness implements AutoCloseable {

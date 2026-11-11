@@ -619,6 +619,18 @@ public final class MapCommand implements CommandExecutor, TabCompleter {
                         + address
                         + (base == null ? " (not built on a published version)" : ", built on v" + base)
                         + ".");
+        if (base != null) {
+            TokenSource auth = authFor(player);
+            offMainThread(player, () -> {
+                MapVersion current = registry.getVersion(auth, address, base);
+                onMainThread(() -> {
+                    if (player.isOnline()
+                            && java.util.Objects.equals(links.addressOf(world.getUniqueId()), address)
+                            && java.util.Objects.equals(links.baseVersionOf(world.getUniqueId()), base))
+                        info(player, "[" + address + " v" + base + "] " + PublishMessages.lodSummary(current.lod()));
+                });
+            });
+        }
     }
 
     /**
@@ -993,6 +1005,10 @@ public final class MapCommand implements CommandExecutor, TabCompleter {
                                 "Ready to go live: " + address + " v" + prepared.version() + " ("
                                         + publicationFacts(prepared) + ") as " + auth.describe()
                                         + ". An admin decides when it goes live.");
+                        info(
+                                player,
+                                "[" + address + " v" + prepared.version() + "] "
+                                        + PublishMessages.lodSummary(prepared.lod()));
                     });
                 } catch (RegistryException e) {
                     feedback.failed(e.getMessage());

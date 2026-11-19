@@ -106,6 +106,42 @@ class RegistryDerivePollingTest {
     }
 
     @Test
+    void failedDialogueShowsFilePointerAndNode() throws Exception {
+        AtomicLong now = new AtomicLong();
+        HttpServer server = server(exchange -> {
+            String path = exchange.getRequestURI().getPath();
+            if (path.endsWith("/uploads")) {
+                json(exchange, 200, "{\"uploadId\":\"u\",\"url\":\"" + base(exchange) + "/archive\"}");
+            } else if (path.equals("/archive")) {
+                exchange.sendResponseHeaders(200, -1);
+                exchange.close();
+            } else if (path.endsWith("/versions") && exchange.getRequestMethod().equals("POST")) {
+                json(exchange, 201, "{\"version\":7,\"state\":\"DRAFT\"}");
+            } else if (path.endsWith("/versions/7")) {
+                json(exchange, 200, """
+                    {"version":7,"state":"DERIVE_FAILED","scene":{"status":"PENDING","problems":[]},
+                     "dialogue":{"status":"INVALID","problems":[{"code":"UNKNOWN_NODE","file":"dialogues/mechanic.json",
+                     "pointer":"/nodes/start/next","nodeId":"start","severity":"ERROR","message":"Unknown target"}]}}
+                    """);
+            } else {
+                throw new AssertionError("Must poll committed version 7: " + path);
+            }
+        });
+        server.start();
+        try {
+            RegistryException failure = assertThrows(
+                    RegistryException.class,
+                    () -> client(server, now, duration -> now.addAndGet(duration.toNanos()))
+                            .push(() -> "token", "bedwars/crater", archive(), "digest", 5, null, null));
+            for (String expected :
+                    List.of("v7", "dialogues/mechanic.json", "/nodes/start/next", "start", "UNKNOWN_NODE", "ERROR"))
+                assertTrue(failure.getMessage().contains(expected), failure.getMessage());
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
     void derivation_failure_timeout_and_interruption_are_actionable() throws Exception {
         assertFailure("DERIVE_FAILED", now -> {}, "v7", "BROKEN_SCENE", "world.spawn");
         assertFailure(

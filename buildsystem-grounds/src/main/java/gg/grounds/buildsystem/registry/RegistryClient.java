@@ -402,7 +402,8 @@ public final class RegistryClient {
                 prepared.note(),
                 prepared.scene(),
                 prepared.preparation(),
-                new MapVersion.Lod("UNAVAILABLE", null, null));
+                new MapVersion.Lod("UNAVAILABLE", null, null),
+                prepared.dialogue());
     }
 
     private static RegistryException unsupportedPreparation(int version, String url) {
@@ -421,19 +422,30 @@ public final class RegistryClient {
     }
 
     private static String sceneProblems(MapVersion version) {
-        if (version.scene() == null || version.scene().problems().isEmpty()) {
-            return "the registry did not provide scene details";
-        }
-        return version.scene().problems().stream()
-                .map(problem -> List.of(
-                                nonBlank(problem.code()),
-                                nonBlank(problem.path()),
-                                nonBlank(problem.qualifiedIdentity()),
-                                nonBlank(problem.message()))
-                        .stream()
+        List<String> details = new java.util.ArrayList<>();
+        if (version.scene() != null)
+            for (var problem : version.scene().problems()) {
+                details.add(java.util.stream.Stream.of(
+                                problem.code(), problem.path(), problem.qualifiedIdentity(), problem.message())
+                        .map(RegistryClient::nonBlank)
                         .filter(value -> !value.isEmpty())
-                        .collect(java.util.stream.Collectors.joining(" · ")))
-                .collect(java.util.stream.Collectors.joining("; "));
+                        .collect(java.util.stream.Collectors.joining(" · ")));
+            }
+        for (var problem : version.dialogue().problems()) {
+            details.add(java.util.stream.Stream.of(
+                            problem.file(),
+                            problem.pointer(),
+                            problem.code(),
+                            problem.nodeId(),
+                            problem.severity(),
+                            problem.message())
+                    .map(RegistryClient::nonBlank)
+                    .filter(value -> !value.isEmpty())
+                    .collect(java.util.stream.Collectors.joining(" · ")));
+        }
+        return details.isEmpty()
+                ? "the registry did not provide content validation details"
+                : String.join("; ", details);
     }
 
     private static String nonBlank(@Nullable String value) {

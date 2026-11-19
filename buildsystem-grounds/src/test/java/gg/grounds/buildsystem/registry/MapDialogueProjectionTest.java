@@ -22,6 +22,35 @@ class MapDialogueProjectionTest {
     }
 
     @Test
+    void readsQualifiedNativeStoryAndExactSharedDiagnostics() throws Exception {
+        try (var input = getClass().getResourceAsStream("/fixtures/maps-dialogue-projections.json")) {
+            assertNotNull(input);
+            var fixture = JsonParser.parseString(
+                            new String(input.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8))
+                    .getAsJsonObject();
+            assertEquals(
+                    fixture.get("validSourceSha256").getAsString(),
+                    fixture.getAsJsonObject("valid")
+                            .getAsJsonObject("proof")
+                            .get("sourceSha256")
+                            .getAsString());
+            var valid = read(",\"dialogue\":" + fixture.get("valid"));
+            assertEquals("VALID", valid.dialogue().status());
+            assertTrue(valid.dialogue().problems().isEmpty());
+            var invalid = read(",\"dialogue\":" + fixture.get("invalid"));
+            assertEquals("INVALID", invalid.dialogue().status());
+            var problem = invalid.dialogue().problems().stream()
+                    .filter(p -> "REFERENCE_UNKNOWN".equals(p.code()))
+                    .findFirst()
+                    .orElseThrow();
+            assertEquals("dialogues/mechanic.json", problem.file());
+            assertEquals("/nodes/farewell", problem.pointer());
+            assertEquals("farewell", problem.nodeId());
+            assertEquals("ERROR", problem.severity());
+        }
+    }
+
+    @Test
     void readsOldAndNewRegistryResponses() {
         assertEquals("UNKNOWN", read("").dialogue().status());
         assertEquals("UNKNOWN", read(",\"dialogue\":null").dialogue().status());

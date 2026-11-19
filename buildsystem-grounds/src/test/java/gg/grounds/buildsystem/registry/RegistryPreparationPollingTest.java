@@ -190,6 +190,8 @@ class RegistryPreparationPollingTest {
             assertTrue(result.isPublished());
             assertEquals("READY", result.preparation().stage());
             assertEquals("UNAVAILABLE", result.lod().stage());
+            assertEquals("VALID", result.dialogue().status());
+            assertEquals("WARNING", result.dialogue().problems().getFirst().severity());
         }
         for (int code : List.of(403, 500)) {
             try (Harness h = new Harness(List.of(
@@ -238,6 +240,9 @@ class RegistryPreparationPollingTest {
             lod.addProperty("bundleBytes", 4113662L);
         }
         json.add("lod", lod);
+        json.add("dialogue", com.google.gson.JsonParser.parseString("""
+            {"status":"VALID","problems":[{"code":"OPTIONAL_GESTURE","severity":"WARNING","file":"dialogues/mechanic.json","pointer":"/nodes/start","message":"Optional cue"}]}
+            """));
         return json.toString();
     }
 

@@ -1,0 +1,140 @@
+{
+  "fixtureVersion": 1,
+  "validSourceSha256": "b8d0fcb110befa22352059c47e0d1b073bea8a4af7ea601857d7f5df2aafb5cd",
+  "valid": {
+    "status": "VALID",
+    "proof": {
+      "actionCatalog": {
+        "id": "grounds:actions",
+        "version": "3"
+      },
+      "assetCatalog": {
+        "id": "grounds:assets",
+        "version": "e1-contract"
+      },
+      "bindingsSchemaVersion": 1,
+      "contentPin": "2c71e95da87ece2edd26edfe57393ca05fd6e397b0218150aadf9711d80736ac",
+      "dialogueIds": [
+        "demo:mechanic"
+      ],
+      "executionSha256": "0484baa0071049e445c0a7210073e564c76340811febad89e4059c61cb3fcbe6",
+      "files": [
+        {
+          "path": "context/host-catalog.json",
+          "sha256": "4a209182b2a9c928d2eb36956438ec49d443e03533138ddaf958e34a232dece0",
+          "sizeBytes": 242
+        },
+        {
+          "path": "dialogues/mechanic.json",
+          "sha256": "7f0993a2781fc8856359b4677e30e4c00560e2e4b1a9f769e6368f1636a6365e",
+          "sizeBytes": 1712
+        },
+        {
+          "path": "grounds/dialogue.json",
+          "sha256": "e3207e0b41a9a8cfd931b5eab2263c8e416b09018505055a06c4eb73f8ed7b17",
+          "sizeBytes": 187
+        },
+        {
+          "path": "texts/de.json",
+          "sha256": "d34db12c70553380c06414a51cc7b6e11239ef5ebc7069685b3898f36524a76d",
+          "sizeBytes": 419
+        },
+        {
+          "path": "texts/en.json",
+          "sha256": "900816828e8d688175f74d7a63029eed2526f01339db2f4d121466c23977fb30",
+          "sizeBytes": 418
+        }
+      ],
+      "hostCatalogSha256": "4a209182b2a9c928d2eb36956438ec49d443e03533138ddaf958e34a232dece0",
+      "profile": {
+        "id": "grounds:dialogue-contract",
+        "sha256": "859471f15968278944920b601b027f9984816ffeda48b428904f2c2f79f583c1",
+        "sizeBytes": 576,
+        "uri": "https://maps-fixtures/dialogue/profiles/contract/1/859471f15968278944920b601b027f9984816ffeda48b428904f2c2f79f583c1/profile.json",
+        "version": "1"
+      },
+      "proof": "STATIC_VALIDATION",
+      "requirements": [
+        {
+          "key": "actor.gesture",
+          "kind": "capability",
+          "required": false,
+          "speaker": null
+        },
+        {
+          "key": "dialogue.choices",
+          "kind": "capability",
+          "required": true,
+          "speaker": null
+        },
+        {
+          "key": "demo:wave",
+          "kind": "gesture",
+          "required": false,
+          "speaker": "mechanic"
+        },
+        {
+          "key": "demo:lift_discussed",
+          "kind": "outcome",
+          "required": false,
+          "speaker": null
+        },
+        {
+          "key": "mechanic",
+          "kind": "speaker",
+          "required": true,
+          "speaker": null
+        }
+      ],
+      "sceneSha256": "f992eac9ebd362b5b966328302dda34cd1afec35388d6020e39bcff5dc77efdc",
+      "schemaVersion": 1,
+      "sourceSha256": "b8d0fcb110befa22352059c47e0d1b073bea8a4af7ea601857d7f5df2aafb5cd",
+      "validatorCoordinate": "gg.grounds:dialogue-json:0.1.0",
+      "workerImage": "grounds/service-maps@sha256:326da97aec4bc34e5ffb3f210cd4f09981ee9bc48aa97c20fc6e2d6c7b625746"
+    },
+    "problems": []
+  },
+  "invalid": {
+    "status": "INVALID",
+    "proof": null,
+    "problems": [
+      {
+        "scope": "CONTENT",
+        "path": "dialogues/mechanic.json",
+        "code": "END_UNREACHABLE",
+        "qualifiedIdentity": null,
+        "message": "Entry has no structural path to an end",
+        "component": "dialogue",
+        "severity": "ERROR",
+        "file": "dialogues/mechanic.json",
+        "pointer": "/entry",
+        "nodeId": null
+      },
+      {
+        "scope": "CONTENT",
+        "path": "dialogues/mechanic.json",
+        "code": "NODE_UNREACHABLE",
+        "qualifiedIdentity": "done",
+        "message": "Unreachable node",
+        "component": "dialogue",
+        "severity": "WARNING",
+        "file": "dialogues/mechanic.json",
+        "pointer": "/nodes/done",
+        "nodeId": "done"
+      },
+      {
+        "scope": "CONTENT",
+        "path": "dialogues/mechanic.json",
+        "code": "REFERENCE_UNKNOWN",
+        "qualifiedIdentity": "farewell",
+        "message": "Unknown target missing",
+        "component": "dialogue",
+        "severity": "ERROR",
+        "file": "dialogues/mechanic.json",
+        "pointer": "/nodes/farewell",
+        "nodeId": "farewell"
+      }
+    ]
+  },
+  "invalidSourceSha256": "47da237d0d43345bb5d25b937eebb4532878c5227e7322e65203855a03f5723e"
+}

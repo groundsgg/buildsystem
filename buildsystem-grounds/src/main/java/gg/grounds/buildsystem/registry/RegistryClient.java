@@ -324,7 +324,8 @@ public final class RegistryClient {
                             + "; check " + versionUrl);
                 // Preserve the original scene diagnostics even if a legacy/error response has no preparation DTO.
                 if ("DERIVE_FAILED".equals(current.state()))
-                    throw new RegistryException("Deriving v" + version + " failed: " + sceneProblems(current));
+                    throw new RegistryException("Deriving v" + version + " failed: " + sceneProblems(current)
+                            + "; full report: " + versionUrl);
                 if ("REJECTED".equals(current.state()) || "TAKEN_DOWN".equals(current.state()))
                     throw new RegistryException(
                             "Version v" + version + " is " + current.state().toLowerCase(Locale.ROOT) + ".");
@@ -402,7 +403,8 @@ public final class RegistryClient {
                 prepared.note(),
                 prepared.scene(),
                 prepared.preparation(),
-                new MapVersion.Lod("UNAVAILABLE", null, null));
+                new MapVersion.Lod("UNAVAILABLE", null, null),
+                prepared.dialogue());
     }
 
     private static RegistryException unsupportedPreparation(int version, String url) {
@@ -420,20 +422,63 @@ public final class RegistryClient {
                 "The registry is still processing v" + version + "; processing continues at " + versionUrl + ".");
     }
 
+    /** Compact player feedback; the exact-version HTTP report remains authoritative. */
+    public static String validationSummary(MapVersion version) {
+        return sceneProblems(version);
+    }
+
     private static String sceneProblems(MapVersion version) {
-        if (version.scene() == null || version.scene().problems().isEmpty()) {
-            return "the registry did not provide scene details";
-        }
-        return version.scene().problems().stream()
-                .map(problem -> List.of(
-                                nonBlank(problem.code()),
-                                nonBlank(problem.path()),
-                                nonBlank(problem.qualifiedIdentity()),
-                                nonBlank(problem.message()))
-                        .stream()
+        List<String> details = new java.util.ArrayList<>();
+        if (version.scene() != null)
+            for (var problem : version.scene().problems()) {
+                details.add(java.util.stream.Stream.of(
+                                problem.code(), problem.path(), problem.qualifiedIdentity(), problem.message())
+                        .map(RegistryClient::nonBlank)
                         .filter(value -> !value.isEmpty())
-                        .collect(java.util.stream.Collectors.joining(" · ")))
-                .collect(java.util.stream.Collectors.joining("; "));
+                        .collect(java.util.stream.Collectors.joining(" · ")));
+            }
+        for (var problem : version.dialogue().problems().stream()
+                .sorted(java.util.Comparator.comparingInt(p -> "WARNING".equals(p.severity()) ? 1 : 0))
+                .toList()) {
+            details.add(java.util.stream.Stream.of(
+                            problem.file(),
+                            problem.pointer(),
+                            problem.code(),
+                            problem.nodeId(),
+                            problem.severity(),
+                            problem.message())
+                    .map(RegistryClient::nonBlank)
+                    .filter(value -> !value.isEmpty())
+                    .collect(java.util.stream.Collectors.joining(" · ")));
+        }
+        if (details.isEmpty()) return "the registry did not provide content validation details";
+        // Individual entries and the total are bounded in UTF-8, including multibyte authors' text.
+        List<String> shown = new java.util.ArrayList<>();
+        int bytes = 0;
+        for (String detail : details) {
+            String bounded = utf8Limit(detail, 650);
+            int next = bounded.getBytes(StandardCharsets.UTF_8).length + (shown.isEmpty() ? 0 : 2);
+            if (shown.size() == 3 || bytes + next > 1900) break;
+            shown.add(bounded);
+            bytes += next;
+        }
+        return String.join("; ", shown) + (shown.size() < details.size() ? "; further diagnostics omitted" : "");
+    }
+
+    private static String utf8Limit(String value, int maxBytes) {
+        if (value.getBytes(StandardCharsets.UTF_8).length <= maxBytes) return value;
+        StringBuilder result = new StringBuilder();
+        int bytes = 0;
+        for (int offset = 0; offset < value.length(); ) {
+            int codePoint = value.codePointAt(offset);
+            String next = new String(Character.toChars(codePoint));
+            int count = next.getBytes(StandardCharsets.UTF_8).length;
+            if (bytes + count > maxBytes - 3) break;
+            result.append(next);
+            bytes += count;
+            offset += Character.charCount(codePoint);
+        }
+        return result + "…";
     }
 
     private static String nonBlank(@Nullable String value) {

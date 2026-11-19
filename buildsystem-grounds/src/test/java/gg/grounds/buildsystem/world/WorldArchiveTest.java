@@ -168,6 +168,32 @@ class WorldArchiveTest {
     }
 
     @Test
+    void pullPushPreservesDialogueSourcesAndDropsOnlyDerivedManifest() throws IOException {
+        List<String> sources = List.of(
+                "scene.json",
+                "dialogues/mechanic.json",
+                "dialogues/nested/other.json",
+                "texts/de.json",
+                "texts/en.json",
+                "context/host-catalog.json",
+                "grounds/dialogue.json",
+                "region/r.0.0.mca");
+        Path world = world(sources.toArray(String[]::new));
+        byte[] utf8 = "{\r\n  \"text\": \"Grüße ☀\"\r\n}\r\n".getBytes(StandardCharsets.UTF_8);
+        for (String source : sources) Files.write(world.resolve(source), utf8);
+        Files.createDirectories(world.resolve("grounds"));
+        Files.writeString(world.resolve("grounds/derived-manifest.json"), "stale proof");
+        Path restored = tmp.resolve("dialogue-restored");
+        WorldArchive.unpack(
+                WorldArchive.pack(world, tmp.resolve("dialogue-pull.tar.zst")).file(), restored);
+        Path pushed = WorldArchive.pack(restored, tmp.resolve("dialogue-push.tar.zst"))
+                .file();
+        for (String source : sources)
+            org.junit.jupiter.api.Assertions.assertArrayEquals(utf8, entryBytes(pushed, source), source);
+        assertFalse(entriesOf(pushed).contains("grounds/derived-manifest.json"));
+    }
+
+    @Test
     void unpack_round_trips_a_packed_world() throws IOException {
         Path world = world("region/r.0.0.mca", "level.dat", "data/raids.dat");
         WorldArchive.Archive packed = WorldArchive.pack(world, tmp.resolve("round.tar.zst"));

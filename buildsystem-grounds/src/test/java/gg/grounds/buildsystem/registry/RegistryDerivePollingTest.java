@@ -36,6 +36,49 @@ class RegistryDerivePollingTest {
     Path tmp;
 
     @Test
+    void large_failure_report_keeps_error_and_exact_version_without_unbounded_chat_component() throws Exception {
+        var root = new com.google.gson.JsonObject();
+        root.addProperty("version", 7);
+        root.addProperty("state", "DERIVE_FAILED");
+        var dialogue = new com.google.gson.JsonObject();
+        dialogue.addProperty("status", "INVALID");
+        var problems = new com.google.gson.JsonArray();
+        for (int i = 0; i < 1000; i++) {
+            var problem = new com.google.gson.JsonObject();
+            problem.addProperty("code", i == 999 ? "ACTUAL_ERROR" : "NOTE");
+            problem.addProperty("severity", i == 999 ? "ERROR" : "WARNING");
+            problem.addProperty("message", "ümlaut ".repeat(80));
+            problems.add(problem);
+        }
+        dialogue.add("problems", problems);
+        root.add("dialogue", dialogue);
+        HttpServer server = server(exchange -> {
+            String path = exchange.getRequestURI().getPath();
+            if (path.endsWith("/uploads"))
+                json(exchange, 200, "{\"uploadId\":\"u\",\"url\":\"" + base(exchange) + "/archive\"}");
+            else if (path.equals("/archive")) {
+                exchange.sendResponseHeaders(200, -1);
+                exchange.close();
+            } else if (path.endsWith("/versions")) json(exchange, 200, "{\"version\":7,\"state\":\"DRAFT\"}");
+            else if (path.endsWith("/versions/7")) json(exchange, 200, root.toString());
+            else throw new AssertionError(path);
+        });
+        server.start();
+        try {
+            var error = assertThrows(
+                    RegistryException.class,
+                    () -> client(server, new AtomicLong(), duration -> {})
+                            .push(() -> "token", "bedwars/crater", archive(), "digest", 5, null, null));
+            String text = error.getMessage();
+            assertTrue(text.contains("ACTUAL_ERROR"), text.substring(0, Math.min(200, text.length())));
+            assertTrue(text.contains("/v1/maps/bedwars/crater/versions/7"));
+            assertTrue(text.getBytes(StandardCharsets.UTF_8).length <= 3000, "Chat summary must be bounded");
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
     void push_commits_derivation_and_polls_until_the_version_is_published() throws Exception {
         List<String> requests = new ArrayList<>();
         List<Duration> delays = new ArrayList<>();
@@ -100,6 +143,42 @@ class RegistryDerivePollingTest {
                     delays);
             assertEquals(6, polls.get());
             assertFalse(requests.stream().anyMatch(request -> request.contains("/publish")), requests.toString());
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
+    void failedDialogueShowsFilePointerAndNode() throws Exception {
+        AtomicLong now = new AtomicLong();
+        HttpServer server = server(exchange -> {
+            String path = exchange.getRequestURI().getPath();
+            if (path.endsWith("/uploads")) {
+                json(exchange, 200, "{\"uploadId\":\"u\",\"url\":\"" + base(exchange) + "/archive\"}");
+            } else if (path.equals("/archive")) {
+                exchange.sendResponseHeaders(200, -1);
+                exchange.close();
+            } else if (path.endsWith("/versions") && exchange.getRequestMethod().equals("POST")) {
+                json(exchange, 201, "{\"version\":7,\"state\":\"DRAFT\"}");
+            } else if (path.endsWith("/versions/7")) {
+                json(exchange, 200, """
+                    {"version":7,"state":"DERIVE_FAILED","scene":{"status":"PENDING","problems":[]},
+                     "dialogue":{"status":"INVALID","problems":[{"code":"UNKNOWN_NODE","file":"dialogues/mechanic.json",
+                     "pointer":"/nodes/start/next","nodeId":"start","severity":"ERROR","message":"Unknown target"}]}}
+                    """);
+            } else {
+                throw new AssertionError("Must poll committed version 7: " + path);
+            }
+        });
+        server.start();
+        try {
+            RegistryException failure = assertThrows(
+                    RegistryException.class,
+                    () -> client(server, now, duration -> now.addAndGet(duration.toNanos()))
+                            .push(() -> "token", "bedwars/crater", archive(), "digest", 5, null, null));
+            for (String expected :
+                    List.of("v7", "dialogues/mechanic.json", "/nodes/start/next", "start", "UNKNOWN_NODE", "ERROR"))
+                assertTrue(failure.getMessage().contains(expected), failure.getMessage());
         } finally {
             server.stop(0);
         }

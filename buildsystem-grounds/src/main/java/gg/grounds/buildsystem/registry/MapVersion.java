@@ -35,7 +35,36 @@ public record MapVersion(
         @Nullable String note,
         @Nullable Scene scene,
         @Nullable Preparation preparation,
-        @Nullable Lod lod) {
+        @Nullable Lod lod,
+        Dialogue dialogue) {
+
+    public MapVersion {
+        dialogue = dialogue == null ? new Dialogue("UNKNOWN", List.of()) : dialogue;
+    }
+
+    /** Source-compatible constructor for registry clients predating dialogue validation. */
+    public MapVersion(
+            int version,
+            String state,
+            @Nullable String bundleSha256,
+            @Nullable Integer parentVersion,
+            long sizeBytes,
+            @Nullable String note,
+            @Nullable Scene scene,
+            @Nullable Preparation preparation,
+            @Nullable Lod lod) {
+        this(
+                version,
+                state,
+                bundleSha256,
+                parentVersion,
+                sizeBytes,
+                note,
+                scene,
+                preparation,
+                lod,
+                new Dialogue("UNKNOWN", List.of()));
+    }
 
     /** Kept for callers that construct versions without registry derivation details. */
     public MapVersion(
@@ -81,7 +110,8 @@ public record MapVersion(
                 optionalString(json, "note"),
                 scene(json),
                 preparation(json),
-                lod(json));
+                lod(json),
+                dialogue(json));
     }
 
     private static @Nullable String optionalString(JsonObject json, String field) {
@@ -123,6 +153,41 @@ public record MapVersion(
         }
         return new Scene(optionalString(source, "status"), List.copyOf(problems));
     }
+
+    private static Dialogue dialogue(JsonObject json) {
+        if (!json.has("dialogue") || !json.get("dialogue").isJsonObject()) return new Dialogue("UNKNOWN", List.of());
+        JsonObject source = json.getAsJsonObject("dialogue");
+        List<DialogueProblem> problems = new ArrayList<>();
+        if (source.has("problems") && source.get("problems").isJsonArray()) {
+            for (var element : source.getAsJsonArray("problems")) {
+                if (!element.isJsonObject()) continue;
+                JsonObject problem = element.getAsJsonObject();
+                problems.add(new DialogueProblem(
+                        optionalString(problem, "code"),
+                        optionalString(problem, "file"),
+                        optionalString(problem, "pointer"),
+                        optionalString(problem, "nodeId"),
+                        optionalString(problem, "severity"),
+                        optionalString(problem, "message")));
+            }
+        }
+        String status = optionalString(source, "status");
+        return new Dialogue(status == null ? "UNKNOWN" : status, List.copyOf(problems));
+    }
+
+    public record Dialogue(String status, List<DialogueProblem> problems) {
+        public Dialogue {
+            problems = List.copyOf(problems);
+        }
+    }
+
+    public record DialogueProblem(
+            @Nullable String code,
+            @Nullable String file,
+            @Nullable String pointer,
+            @Nullable String nodeId,
+            @Nullable String severity,
+            @Nullable String message) {}
 
     private static @Nullable Preparation preparation(JsonObject json) {
         if (!json.has("preparation") || !json.get("preparation").isJsonObject()) return null;

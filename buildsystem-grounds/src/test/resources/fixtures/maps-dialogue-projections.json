@@ -17,7 +17,7 @@
       "dialogueIds": [
         "demo:mechanic"
       ],
-      "executionSha256": "08ea506cfb6bfbc98d75c3b936b66eeaf481d1476a259437ad5c3db2fad01123",
+      "executionSha256": "0484baa0071049e445c0a7210073e564c76340811febad89e4059c61cb3fcbe6",
       "files": [
         {
           "path": "context/host-catalog.json",
@@ -90,7 +90,7 @@
       "schemaVersion": 1,
       "sourceSha256": "b8d0fcb110befa22352059c47e0d1b073bea8a4af7ea601857d7f5df2aafb5cd",
       "validatorCoordinate": "gg.grounds:dialogue-json:0.1.0",
-      "workerImage": "grounds/service-maps@sha256:30911a0ed423f7e89715c28fbfaff6d3a7d61ca97f0c52b44e3cc41d33f83617"
+      "workerImage": "grounds/service-maps@sha256:326da97aec4bc34e5ffb3f210cd4f09981ee9bc48aa97c20fc6e2d6c7b625746"
     },
     "problems": []
   },

@@ -1005,15 +1005,7 @@ public final class MapCommand implements CommandExecutor, TabCompleter {
                                 links.addressOf(world.getUniqueId()), links.baseVersionOf(world.getUniqueId())))
                             linkQuietly(player, world, address, prepared.version());
                         else info(player, "Your world link changed while publishing; the current link was kept.");
-                        ok(
-                                player,
-                                "Ready to go live: " + address + " v" + prepared.version() + " ("
-                                        + publicationFacts(prepared) + ") as " + auth.describe()
-                                        + ". An admin decides when it goes live.");
-                        info(
-                                player,
-                                "[" + address + " v" + prepared.version() + "] "
-                                        + PublishMessages.lodSummary(prepared.lod()));
+                        publicationComplete(player, address, prepared, auth.describe());
                     });
                 } catch (RegistryException e) {
                     feedback.failed(e.getMessage());
@@ -1184,6 +1176,21 @@ public final class MapCommand implements CommandExecutor, TabCompleter {
 
     private static String mib(long bytes) {
         return String.format(Locale.ROOT, "%.1f MB", bytes / 1024.0 / 1024.0);
+    }
+
+    static void publicationComplete(Player player, String address, MapVersion prepared, String authDescription) {
+        boolean story = "VALID".equals(prepared.dialogue().status());
+        ok(
+                player,
+                (story ? "Story statically validated: " : "Ready to go live: ")
+                        + address + " v" + prepared.version() + " (" + publicationFacts(prepared) + ") as "
+                        + authDescription
+                        + (story
+                                ? ". Dialogue runtime activation is not available yet."
+                                : ". An admin decides when it goes live."));
+        if (!prepared.dialogue().problems().isEmpty())
+            info(player, "[" + address + " v" + prepared.version() + "] " + RegistryClient.validationSummary(prepared));
+        info(player, "[" + address + " v" + prepared.version() + "] " + PublishMessages.lodSummary(prepared.lod()));
     }
 
     static String publicationFacts(MapVersion published) {
